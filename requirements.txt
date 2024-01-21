@@ -1,0 +1,9 @@
+transformers>=4.30.0
+bitsandbytes
+pandas
+huggingface_hub
+numpy
+accelerate
+auto-gptq
+optimum
+peft
