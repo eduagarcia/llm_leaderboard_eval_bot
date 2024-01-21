@@ -1,4 +1,4 @@
-from hf_util import download_requests_repo, update_status_requests, upload_results
+from hf_util import download_requests_repo, update_status_requests, upload_results, free_up_cache
 from run_eval import run_eval_on_model
 from datetime import datetime, timezone
 from eval_queue import get_eval_results_df, update_eval_version
@@ -91,6 +91,8 @@ def main_loop():
             request_dict["traceback"] = traceback.format_exc()
             logging.error(request_dict["traceback"])
             update_status_requests(request["model_id"], request_dict)
+        if last_job_id % 5 == 0:
+            free_up_cache()
 
 if __name__ == "__main__":
     while True:

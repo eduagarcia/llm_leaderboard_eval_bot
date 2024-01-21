@@ -1,8 +1,10 @@
 from huggingface_hub import snapshot_download, HfApi
 from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, QUEUE_REPO, RESULTS_REPO
+from huggingface_hub import scan_cache_dir
 import json
 import os
 import shutil
+from huggingface_
 
 api = HfApi()
 
@@ -55,6 +57,15 @@ def commit_requests_folder(commit_message):
         repo_type="dataset",
         commit_message=commit_message,
     )
+
+def free_up_cache():
+    hf_info = scan_cache_dir()
+    revisions = []
+    for repo in hf_info.repos:
+        for revision in repo.revisions:
+            revisions.append(revision.commit_hash)
+    del_strategy = hf_info.delete_revisions(*revisions)
+    del_strategy.execute()
 
 if __name__ == "__main__":
     download_requests_repo()
