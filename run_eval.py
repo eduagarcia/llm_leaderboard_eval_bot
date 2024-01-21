@@ -6,6 +6,8 @@ import time
 import json
 from collections import defaultdict
 from datetime import datetime, timezone
+import gc
+import torch
 
 def run_eval_on_model(
         model="huggingface",
@@ -60,6 +62,8 @@ def run_eval_on_model(
             result_tasks['config_tasks'][subtask_name] = "LM Harness task"
             result_tasks['versions'][subtask_full_name] = result["configs"][subtask]["metadata"]["version"]
             result_tasks['summary_tasks'][subtask_full_name] = {}
+        gc.collect()
+        torch.cuda.empty_cache()
 
     for score_name in all_results:
         result_tasks['results']['all'][score_name] = sum(all_results[score_name])/len(all_results[score_name])
@@ -71,6 +75,9 @@ def run_eval_on_model(
     return result_tasks
 
 if __name__ == "__main__":
+    #print(run_eval_on_model(
+    #    model_args="pretrained=meta-llama/Llama-2-7b-hf,revision=main,dtype=float16"
+    #))
     print(run_eval_on_model(
-        model_args="pretrained=TinyLlama/TinyLlama-1.1B-Chat-v0.4,peft=muzammil-eds/tinyllama-Chat-v0.4-Clinical-peft,revision=main,dtype=float16",
+        model_args="pretrained=01-ai/Yi-34B,revision=main,dtype=bfloat16"
     ))

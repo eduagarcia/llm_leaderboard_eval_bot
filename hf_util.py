@@ -4,7 +4,7 @@ from huggingface_hub import scan_cache_dir
 import json
 import os
 import shutil
-from huggingface_
+from transformers import AutoModel, AutoTokenizer
 
 api = HfApi()
 
@@ -66,6 +66,11 @@ def free_up_cache():
             revisions.append(revision.commit_hash)
     del_strategy = hf_info.delete_revisions(*revisions)
     del_strategy.execute()
+
+def download_model(name, revision, force=False):
+    model = AutoModel.from_pretrained(name, revision=revision, device_map="cpu", force_download=force, resume_download=not force)
+    tokenizer = AutoTokenizer.from_pretrained(name, revision=revision, force_download=force, resume_download=not force)
+    del model, tokenizer
 
 if __name__ == "__main__":
     download_requests_repo()
