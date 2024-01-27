@@ -12,7 +12,7 @@ from threading import Thread, RLock
 import torch
 import gc
 
-def run_request(model_id, request_data, job_id=None):
+def run_request(model_id, request_data, job_id=None, commit_hash=None):
     start_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S.%f")
     request_data["status"] = "RUNNING"
     request_data["job_id"] = job_id
@@ -67,6 +67,7 @@ def run_request(model_id, request_data, job_id=None):
     results["config_general"]["submitted_time"] = request_data["submitted_time"]
     results["config_general"]["lm_eval_model_type"] = lm_eval_model_type
     results["config_general"]["eval_version"] = EVAL_VERSION
+    results["config_general"]["model_sha"] = commit_hash
 
     upload_results(request_data["model"], results)
 
@@ -75,7 +76,7 @@ def run_request(model_id, request_data, job_id=None):
     update_status_requests(model_id, request_data)
 
 lock = RLock()
-MODELS_DOWNLOADED = []
+MODELS_DOWNLOADED = {}
 MODELS_DOWNLOADED_FAILED = {}
 MAX_MODELS_DOWNLOADED_QUEUE_SIZE = 5
 def download_all_models(pending_df):
@@ -83,6 +84,7 @@ def download_all_models(pending_df):
     for _, request in pending_df.iterrows():
         while len(MODELS_DOWNLOADED) >= MAX_MODELS_DOWNLOADED_QUEUE_SIZE:
             time.sleep(60)
+        commit_hash = None
         if request["lm_eval_model_type"] == "huggingface":
             logging.info(f"Downloading of {request['model']} [{request['revision']}]...")
             retrys = 0
@@ -94,7 +96,7 @@ def download_all_models(pending_df):
                     if request["weight_type"] == "Adapter":
                         model_to_download = request["base_model"]
                         revision = "main"
-                    download_model(model_to_download, revision, force=(retrys >= 2))
+                    commit_hash = download_model(model_to_download, revision, force=(retrys >= 2))
                     quit_loop = True
                 except Exception as e:
                     print(e)
@@ -103,7 +105,7 @@ def download_all_models(pending_df):
                         quit_loop = True
                         MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"] = str(e)
         with lock:
-            MODELS_DOWNLOADED.append(f"{request['model']}_{request['revision']}")
+            MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}")] = commit_hash
         logging.info(f"Download of {request['model']} [{request['revision']}] completed.")
 
 MODELS_TO_PRIORITIZE = [
@@ -150,11 +152,12 @@ def main_loop():
             while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED:
                 time.sleep(60)
             with lock:
-                MODELS_DOWNLOADED.remove(f"{request['model']}_{request['revision']}")
+                commit_hash = MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
+                del MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
             if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
                 exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
                 raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}")
-            run_request(request["model_id"], request_dict, job_id=last_job_id)
+            run_request(request["model_id"], request_dict, job_id=last_job_id, commit_hash=commit_hash)
         except Exception as e:
             request_dict["status"] = "FAILED"
             request_dict["error_msg"] = str(e)

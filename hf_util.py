@@ -73,11 +73,21 @@ def free_up_cache():
     del_strategy = hf_info.delete_revisions(*revisions)
     del_strategy.execute()
 
-def download_model(name, revision, force=False):
+def download_model(name, revision="main", force=False):
     config = AutoConfig.from_pretrained(
         name, revision=revision, trust_remote_code=TRUST_REMOTE_CODE, force_download=force, resume_download=not force
     )
-    
+    commit_hash = config._commit_hash
+
+    # check if model is already downloaded
+    # Not perfect, but works for most cases
+    hf_info = scan_cache_dir()
+    for repo in hf_info.repos:
+        if repo.repo_id == name:
+            for revision in repo.revisions:
+                if commit_hash == revision.commit_hash and len(revision.files) >= 3:
+                    return commit_hash
+                
     if (getattr(config, "model_type") in MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING_NAMES):
         # first check if model type is listed under seq2seq models, since some
         # models like MBart are listed in both seq2seq and causal mistakenly in HF transformers.
@@ -102,6 +112,7 @@ def download_model(name, revision, force=False):
         name, revision=revision, trust_remote_code=TRUST_REMOTE_CODE, force_download=force, resume_download=not force
     )
     del model, tokenizer
+    return commit_hash
 
 if __name__ == "__main__":
     #download_requests_repo()
