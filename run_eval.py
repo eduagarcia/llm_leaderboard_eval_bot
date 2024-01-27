@@ -17,7 +17,7 @@ def run_eval_on_model(
 ):  
     if start_time is None:
         start_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S.%f")
-    os.makedirs(os.path.join(output_path, "raw"), exist_ok=True)
+    #os.makedirs(os.path.join(output_path, "raw"), exist_ok=True)
     result_tasks = {
         "config_general": {
             "start_date": start_time,
@@ -42,8 +42,8 @@ def run_eval_on_model(
             tasks=",".join(task.task_list),
             num_fewshot=task.few_shot,
             limit=task.limit,
-            batch_size='auto',
-            max_batch_size=4096,
+            batch_size='conservative',
+            max_batch_size=32,
             log_samples=True,
             show_config=True,
             output_path=os.path.join(output_path, f"raw_{start_time}", task.benchmark)
@@ -79,5 +79,5 @@ if __name__ == "__main__":
     #    model_args="pretrained=meta-llama/Llama-2-7b-hf,revision=main,dtype=float16"
     #))
     print(run_eval_on_model(
-        model_args="pretrained=01-ai/Yi-34B,revision=main,dtype=bfloat16"
+        model_args="pretrained=gpt2,revision=main,dtype=float16,trust_remote_code=True"
     ))

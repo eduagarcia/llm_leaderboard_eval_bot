@@ -3,7 +3,7 @@ from run_eval import run_eval_on_model
 from datetime import datetime, timezone
 from eval_queue import get_eval_results_df, update_eval_version
 import os
-from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, EVAL_VERSION
+from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, EVAL_VERSION, TRUST_REMOTE_CODE
 import traceback
 import json
 import time
@@ -43,7 +43,7 @@ def run_request(model_id, request_data, job_id=None):
         
         model_args += extra_args
 
-        model_args += f",revision={request_data['revision']}"
+        model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)},truncation=True,device_map=0"
 
     results = run_eval_on_model(
         model=lm_eval_model_type,
@@ -97,9 +97,13 @@ def download_all_models(pending_df):
                     retrys += 1
                     if retrys >= 3:
                         quit_loop = True
-                        MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"] = e
+                        MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"] = str(e)
         MODELS_DOWNLOADED.append(f"{request['model']}_{request['revision']}")
         logging.info(f"Download of {request['model']} [{request['revision']}] completed.")
+
+MODELS_TO_PRIORITIZE = [
+    "mistralai/Mixtral-8x7B-v0.1"
+]
 
 def main_loop():
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
@@ -109,7 +113,12 @@ def main_loop():
     requests_df = get_eval_results_df()
     last_job_id = int(requests_df["job_id"].max())
     pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])]
-    #pending_df = pending_df.sample(frac=1)
+    
+    priority_df = pending_df[requests_df["model"].isin(MODELS_TO_PRIORITIZE)]
+    if len(priority_df) > 0:
+        pending_df = priority_df
+    
+    pending_df = pending_df.sort_values('submitted_time')
     download_thread = Thread(target=download_all_models, args=(pending_df,))
     download_thread.daemon = True
     download_thread.start()
@@ -123,7 +132,8 @@ def main_loop():
             while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED:
                 time.sleep(60)
             if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
-                raise e
+                exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
+                raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}")
             run_request(request["model_id"], request_dict, job_id=last_job_id)
         except Exception as e:
             request_dict["status"] = "FAILED"

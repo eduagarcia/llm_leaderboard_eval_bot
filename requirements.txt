@@ -7,4 +7,6 @@ accelerate
 auto-gptq
 optimum
 peft
-tiktoken
+tiktoken #qwenn stability
+einops #internlm
+transformers_stream_generator #qwenn

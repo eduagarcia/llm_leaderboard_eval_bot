@@ -1,10 +1,15 @@
 from huggingface_hub import snapshot_download, HfApi
-from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, QUEUE_REPO, RESULTS_REPO
+from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, QUEUE_REPO, RESULTS_REPO, TRUST_REMOTE_CODE
 from huggingface_hub import scan_cache_dir
 import json
 import os
 import shutil
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
+
+from transformers.models.auto.modeling_auto import (
+    MODEL_FOR_CAUSAL_LM_MAPPING_NAMES,
+    MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING_NAMES,
+)
 
 api = HfApi()
 
@@ -54,6 +59,7 @@ def commit_requests_folder(commit_message):
         repo_id=QUEUE_REPO,
         path_in_repo="./",
         allow_patterns="*.json",
+        ignore_patterns=["*/.ipynb_checkpoints/*", ".ipynb_checkpoints"],
         repo_type="dataset",
         commit_message=commit_message,
     )
@@ -68,9 +74,36 @@ def free_up_cache():
     del_strategy.execute()
 
 def download_model(name, revision, force=False):
-    model = AutoModel.from_pretrained(name, revision=revision, device_map="cpu", force_download=force, resume_download=not force)
-    tokenizer = AutoTokenizer.from_pretrained(name, revision=revision, force_download=force, resume_download=not force)
+    config = AutoConfig.from_pretrained(
+        name, revision=revision, trust_remote_code=TRUST_REMOTE_CODE, force_download=force, resume_download=not force
+    )
+    
+    if (getattr(config, "model_type") in MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING_NAMES):
+        # first check if model type is listed under seq2seq models, since some
+        # models like MBart are listed in both seq2seq and causal mistakenly in HF transformers.
+        # these special cases should be treated as seq2seq models.
+        AUTO_MODEL_CLASS = AutoModelForSeq2SeqLM
+    elif (getattr(config, "model_type") in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES):
+        AUTO_MODEL_CLASS = AutoModelForCausalLM
+    else:
+        if not TRUST_REMOTE_CODE:
+            print(
+                "HF model type is neither marked as CausalLM or Seq2SeqLM. \
+            This is expected if your model requires `trust_remote_code=True` but may be an error otherwise."
+            )
+        # if model type is neither in HF transformers causal or seq2seq model registries
+        # then we default to AutoModelForCausalLM
+        AUTO_MODEL_CLASS = AutoModelForCausalLM
+        
+    model = AUTO_MODEL_CLASS.from_pretrained(
+        name, revision=revision, device_map="cpu", trust_remote_code=TRUST_REMOTE_CODE, force_download=force, resume_download=not force
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        name, revision=revision, trust_remote_code=TRUST_REMOTE_CODE, force_download=force, resume_download=not force
+    )
     del model, tokenizer
 
 if __name__ == "__main__":
-    download_requests_repo()
+    #download_requests_repo()
+    import sys
+    download_model(sys.argv[-1], "main")

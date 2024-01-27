@@ -71,5 +71,5 @@ def update_eval_version(requests_df, eval_version):
 
 
 if __name__ == "__main__":
-    print(get_eval_results_df().iloc[0].to_dict())
-    print(get_eval_results_df())
+    #print(get_eval_results_df().iloc[0].to_dict())
+    print(get_eval_results_df().sort_values('submitted_time'))
