@@ -8,7 +8,7 @@ import traceback
 import json
 import time
 import logging
-from threading import Thread
+from threading import Thread, RLock
 import torch
 import gc
 
@@ -36,14 +36,14 @@ def run_request(model_id, request_data, job_id=None):
 
         if request_data["precision"] == "8bit":
             extra_args += ",load_in_8bit=True"
-        elif  request_data["precision"] == "4bit":
+        elif request_data["precision"] == "4bit":
             extra_args += ",load_in_4bit=True"
-        elif  request_data["precision"] == "GPTQ":
+        elif request_data["precision"] == "GPTQ":
             extra_args += ",autogptq=True"
         
         model_args += extra_args
 
-        model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)},truncation=True,device_map=0"
+        model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)},parallelize=True,device_map=auto"
 
     results = run_eval_on_model(
         model=lm_eval_model_type,
@@ -74,11 +74,15 @@ def run_request(model_id, request_data, job_id=None):
     request_data["eval_version"] = EVAL_VERSION
     update_status_requests(model_id, request_data)
 
+lock = RLock()
 MODELS_DOWNLOADED = []
 MODELS_DOWNLOADED_FAILED = {}
+MAX_MODELS_DOWNLOADED_QUEUE_SIZE = 5
 def download_all_models(pending_df):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     for _, request in pending_df.iterrows():
+        while len(MODELS_DOWNLOADED) >= MAX_MODELS_DOWNLOADED_QUEUE_SIZE:
+            time.sleep(60)
         if request["lm_eval_model_type"] == "huggingface":
             logging.info(f"Downloading of {request['model']} [{request['revision']}]...")
             retrys = 0
@@ -98,11 +102,25 @@ def download_all_models(pending_df):
                     if retrys >= 3:
                         quit_loop = True
                         MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"] = str(e)
-        MODELS_DOWNLOADED.append(f"{request['model']}_{request['revision']}")
+        with lock:
+            MODELS_DOWNLOADED.append(f"{request['model']}_{request['revision']}")
         logging.info(f"Download of {request['model']} [{request['revision']}] completed.")
 
 MODELS_TO_PRIORITIZE = [
-    "mistralai/Mixtral-8x7B-v0.1"
+    "mistralai/Mixtral-8x7B-v0.1",
+    "meta-llama/Llama-2-70b-hf",
+    "huggyllama/llama-65b",
+    "huggyllama/llama-30b",
+    "01-ai/Yi-34B",
+    "tiiuae/falcon-40b",
+    "Qwen/Qwen-72B",
+    "facebook/opt-66b",
+    "facebook/opt-30b",
+    "xverse/XVERSE-65B",
+    "xverse/XVERSE-65B-2",
+    "deepseek-ai/deepseek-llm-67b-base",
+    "BAAI/Aquila2-34B",
+    "AI-Sweden-Models/gpt-sw3-40b"
 ]
 
 def main_loop():
@@ -131,6 +149,8 @@ def main_loop():
             logging.info(f"Waiting download of {request['model']} [{request['revision']}]...")
             while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED:
                 time.sleep(60)
+            with lock:
+                MODELS_DOWNLOADED.remove(f"{request['model']}_{request['revision']}")
             if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
                 exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
                 raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}")
