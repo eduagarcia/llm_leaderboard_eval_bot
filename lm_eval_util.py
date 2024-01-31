@@ -41,7 +41,8 @@ def evaluate(
         show_config=False,
         include_path=None,
         gen_kwargs=None,
-        verbosity="INFO"
+        verbosity="INFO",
+        bootstrap_iters=100000
 ) -> None:
     """Evaluate a model on a set of tasks."""
     eval_logger = utils.eval_logger
@@ -119,21 +120,36 @@ def evaluate(
 
     eval_logger.info(f"Selected Tasks: {task_names}")
 
+    num_fewshots = num_fewshot
+    if num_fewshot is not None and isinstance(num_fewshot, str):
+        if ',' in num_fewshot:
+            num_fewshots = [None if n == 'None' else int(n) for n in num_fewshot.split(',')]
+        else:
+            num_fewshots = int(num_fewshot)
+
+    limits = limit
+    if limit is not None and isinstance(limit, str):
+        if ',' in limit:
+            limits = [None if n == 'None' else float(n) for n in limit.split(',')]
+        else:
+            limits = float(limit)
+
     results = evaluator.simple_evaluate(
         model=model,
         model_args=model_args,
         tasks=task_names,
-        num_fewshot=num_fewshot,
+        num_fewshot=num_fewshots,
         batch_size=batch_size,
         max_batch_size=max_batch_size,
         device=device,
         use_cache=use_cache,
-        limit=limit,
+        limit=limits,
         decontamination_ngrams_path=decontamination_ngrams_path,
         check_integrity=check_integrity,
         write_out=write_out,
         log_samples=log_samples,
         gen_kwargs=gen_kwargs,
+        bootstrap_iters=bootstrap_iters,
     )
 
     if results is not None:
