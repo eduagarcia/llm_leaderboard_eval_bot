@@ -140,6 +140,21 @@ MODELS_TO_PRIORITIZE = [
     "AI-Sweden-Models/gpt-sw3-40b"
 ]
 
+MODELS_TO_PRIORITIZE = [
+    "Deci/DeciLM-6b",
+    "Qwen/Qwen-7B",
+    "datalawyer/legal-llama-v1",
+    "datalawyer/legal-llama-v2",
+    "cognitivecomputations/dolphin-2.6-mistral-7b-dpo-laser"
+    "dynamofl/dynamo-8B-v0.1",
+    "BAAI/Aquila-7B",
+    "deepseek-ai/deepseek-llm-7b-base",
+    "baichuan-inc/Baichuan2-7B-Base",
+    "lrds-code/boana-7b-instruct",
+    "xverse/XVERSE-7B"
+]
+
+
 def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     with open(request["filepath"], encoding='utf-8') as fp:
@@ -174,7 +189,7 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
         if parallelize:
             torch.cuda.empty_cache()
         else:
-            with torch.cuda.device(gpu_id):
+            with torch.cuda.device(f"cuda:{gpu_id}"):
                 torch.cuda.empty_cache()
 
 def main_loop(
@@ -278,7 +293,7 @@ if __name__ == "__main__":
     gpu_ids= args.gpu_ids.split(',')
     while True:
         main_loop(
-            gpu_ids=args.gpu_ids,
+            gpu_ids=gpu_ids,
             parallelize=args.parallelize,
             download_queue_size=args.download_queue_size
         )

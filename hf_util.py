@@ -4,7 +4,9 @@ from huggingface_hub import scan_cache_dir
 import json
 import os
 import shutil
+import time
 from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
+from huggingface_hub.utils._errors import HfHubHTTPError
 
 from transformers.models.auto.modeling_auto import (
     MODEL_FOR_CAUSAL_LM_MAPPING_NAMES,
@@ -26,7 +28,7 @@ def download_requests_repo():
         etag_timeout=30
     )
 
-def update_status_requests(model_id, new_data):
+def _update_status_requests(model_id, new_data):
     #update one file
     filepath = os.path.join(EVAL_REQUESTS_PATH, f"{model_id}.json")
     with open(filepath, "w", encoding="utf-8") as f:
@@ -39,7 +41,7 @@ def update_status_requests(model_id, new_data):
         commit_message=f"Update status of {model_id} to {new_data['status']}",
     )
 
-def upload_results(model_name, results_data):
+def _upload_results(model_name, results_data):
     #upload results
     filename = f"results_{results_data['config_general']['start_date']}.json"
     filepath = os.path.join(EVAL_RESULTS_PATH, model_name, filename)
@@ -52,6 +54,22 @@ def upload_results(model_name, results_data):
         repo_type="dataset",
         commit_message=f"Updating model {model_name}",
     )
+
+def _try_request_again(func, download_func, *args):
+    for i in range(5):
+        try:
+            func(*args)
+        except HfHubHTTPError as e:
+            download_func()
+            pass
+        except Exception as e:
+            raise e
+
+def update_status_requests(*args):
+    return _try_request_again(_update_status_requests, download_requests_repo, *args)
+
+def upload_results(*args):
+    return _try_request_again(_upload_results, lambda: time.sleep(1), *args)
 
 def commit_requests_folder(commit_message):
     api.upload_folder(

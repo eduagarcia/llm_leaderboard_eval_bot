@@ -42,8 +42,8 @@ def run_eval_on_model(
             tasks=",".join(task.task_list),
             num_fewshot=task.few_shot,
             limit=task.limit,
-            batch_size='conservative',
-            max_batch_size=32,
+            batch_size='auto',
+            max_batch_size=128,
             log_samples=True,
             show_config=True,
             output_path=os.path.join(output_path, f"raw_{start_time}", task.benchmark)
