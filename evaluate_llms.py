@@ -169,7 +169,11 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
         logging.error(request_dict["traceback"])
         update_status_requests(request["model_id"], request_dict)
     gc.collect()
-    torch.cuda.empty_cache()
+    if parallelize:
+        torch.cuda.empty_cache()
+    else:
+        with torch.cuda.device(gpu_id):
+            torch.cuda.empty_cache()
 
 def main_loop(
         gpu_ids = [0],
