@@ -1,12 +1,12 @@
-version: 1.0.0
+version: 0.0.4
 tasks:
   oab_exams:
     benchmark: oab_exams
     col_name: OAB Exams
     task_list:
-    - oab_exams
-    metric: acc
-    few_shot: 3
+    - oab_exams_generate
+    metric: exact_match
+    few_shot: 5
     limit: null
     baseline: 25.0
     human_baseline: 50.0
@@ -17,12 +17,12 @@ tasks:
     benchmark: brazilian_court_decisions_judgment
     col_name: BR Court Decisions
     task_list:
-    - brazilian_court_decisions_judgment
+    - brazilian_court_decisions_judgment_generate
     metric: f1_macro
-    few_shot: 3
+    few_shot: 5
     limit: null
     baseline: 33.33
-    human_baseline: 95.0
+    human_baseline: 100.0
     description: A classification dataset of court decisions from the Tribunal de
       Justiça de Alagoas (TJAL, the State Supreme Court of Alagoas (Brazil).
     link: https://huggingface.co/datasets/joelniklaus/brazilian_court_decisions
@@ -30,23 +30,23 @@ tasks:
     benchmark: datalawyer_frases
     col_name: DL Frases
     task_list:
-    - datalawyer_frases
+    - datalawyer_frases_generate
     metric: f1_macro
     few_shot: 15
     limit: 2000
     baseline: 10.0
-    human_baseline: 90.0
+    human_baseline: 100.0
     description: A classification dataset
     link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark
   rrip:
     benchmark: rrip
     col_name: RRIP
     task_list:
-    - rrip
+    - rrip_generate
     metric: f1_macro
     few_shot: 15
     limit: null
     baseline: 12.5
-    human_baseline: 95.0
+    human_baseline: 100.0
     description: A classification dataset
     link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark

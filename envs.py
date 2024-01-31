@@ -1,7 +1,7 @@
 import os
 from yaml import safe_load
 
-TASK_CONFIG_NAME = os.getenv("TASK_CONFIG", "legal_config")
+TASK_CONFIG_NAME = os.getenv("TASK_CONFIG", "legal_config_0_0_4")
 TASK_CONFIG_PATH = os.path.join('tasks_config', TASK_CONFIG_NAME + ".yaml")
 with open(TASK_CONFIG_PATH, 'r', encoding='utf-8') as f:
     TASK_CONFIG = safe_load(f)
