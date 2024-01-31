@@ -1,4 +1,10 @@
 import os
+from yaml import safe_load
+
+TASK_CONFIG_NAME = os.getenv("TASK_CONFIG", "legal_config")
+TASK_CONFIG_PATH = os.path.join('tasks_config', TASK_CONFIG_NAME + ".yaml")
+with open(TASK_CONFIG_PATH, 'r', encoding='utf-8') as f:
+    TASK_CONFIG = safe_load(f)
 
 QUEUE_REPO = os.getenv("QUEUE_REPO", "datalawyer/llm_leaderboard_requests")
 RESULTS_REPO = os.getenv("RESULTS_REPO", "datalawyer/llm_leaderboard_results")
@@ -11,4 +17,4 @@ DYNAMIC_INFO_PATH = os.path.join(CACHE_PATH, "dynamic-info")
 
 TRUST_REMOTE_CODE = bool(os.getenv("TRUST_REMOTE_CODE", False))
 
-EVAL_VERSION=os.getenv("EVAL_VERSION", "0.0.4")
+EVAL_VERSION=os.getenv("EVAL_VERSION", TASK_CONFIG["version"])
