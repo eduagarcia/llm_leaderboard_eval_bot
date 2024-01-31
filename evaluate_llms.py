@@ -8,10 +8,12 @@ import traceback
 import json
 import time
 import logging
-from threading import Thread, RLock
+from threading import Thread, Lock, RLock
 import torch
 import gc
 import argparse
+from queue import Queue
+from itertools import count
 
 def run_request(
         model_id,
@@ -91,11 +93,10 @@ def run_request(
 lock = RLock()
 MODELS_DOWNLOADED = {}
 MODELS_DOWNLOADED_FAILED = {}
-MAX_MODELS_DOWNLOADED_QUEUE_SIZE = 5
-def download_all_models(pending_df):
+def download_all_models(pending_df, max_queue_size=5):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     for _, request in pending_df.iterrows():
-        while len(MODELS_DOWNLOADED) >= MAX_MODELS_DOWNLOADED_QUEUE_SIZE:
+        while len(MODELS_DOWNLOADED) >= max_queue_size:
             time.sleep(60)
         commit_hash = None
         if request["lm_eval_model_type"] == "huggingface":
@@ -168,16 +169,18 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
         request_dict["traceback"] = traceback.format_exc()
         logging.error(request_dict["traceback"])
         update_status_requests(request["model_id"], request_dict)
-    gc.collect()
-    if parallelize:
-        torch.cuda.empty_cache()
-    else:
-        with torch.cuda.device(gpu_id):
+    finally:
+        gc.collect()
+        if parallelize:
             torch.cuda.empty_cache()
+        else:
+            with torch.cuda.device(gpu_id):
+                torch.cuda.empty_cache()
 
 def main_loop(
         gpu_ids = [0],
-        parallelize = False
+        parallelize = False,
+        download_queue_size = 5
     ):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     logging.info("Running main loop")
@@ -192,7 +195,7 @@ def main_loop(
         pending_df = priority_df
     
     pending_df = pending_df.sort_values('submitted_time')
-    download_thread = Thread(target=download_all_models, args=(pending_df,))
+    download_thread = Thread(target=download_all_models, args=(pending_df,download_queue_size))
     download_thread.daemon = True
     download_thread.start()
 
@@ -205,22 +208,47 @@ def main_loop(
             wait_download_and_run_request(request, gpu_ids[0], parallelize, last_job_id)
     else:
         # spawn threads of wait_download_and_run_request for each gpu
-        thread_per_gpu = {}
-        for i, request in pending_df.iterrows():
-            last_job_id += 1
-            gpu_id = gpu_ids[i % len(gpu_ids)]
-            if gpu_id in thread_per_gpu:
-                thread_per_gpu[gpu_id].join()
-            thread = Thread(target=wait_download_and_run_request, args=(request, gpu_id, parallelize, last_job_id))
-            thread.daemon = True
-            thread_per_gpu[gpu_id] = thread
-            thread.start()
+        task_queue = Queue()
+        job_id_counter = count(start=last_job_id)  # Thread-safe counter for job_id
+        job_id_lock = Lock()
 
-        for thread in thread_per_gpu.values():
+        def worker(task_queue, job_id_counter, job_id_lock, gpu_id):
+            while True:
+                task = task_queue.get()
+                if task is None:  # Sentinel value to exit thread
+                    task_queue.task_done()
+                    break
+                request = task
+                try:
+                    with job_id_lock:
+                        job_id = next(job_id_counter)
+                    wait_download_and_run_request(request, gpu_id, False, job_id)
+                except Exception as e:
+                    traceback.print_exc()
+                    print(f"Error processing task with GPU {gpu_id}: {e}")
+                finally:
+                    task_queue.task_done()
+
+        # Start a worker thread for each GPU
+        threads = []
+        for gpu_id in gpu_ids:
+            thread = Thread(target=worker, args=(task_queue, job_id_counter, job_id_lock, gpu_id))
+            thread.daemon = True
+            thread.start()
+            threads.append(thread)
+
+        # Enqueue tasks
+        for _, request in pending_df.iterrows():
+            task_queue.put(request)
+        
+        for _ in gpu_ids:
+            task_queue.put(None)  # Sentinel values to stop the worker threads
+
+        # Wait for all of the tasks to finish
+        for thread in threads:
             thread.join()
 
     download_thread.join()
-    #free_up_cache()
 
 def parse_eval_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -236,6 +264,12 @@ def parse_eval_args() -> argparse.Namespace:
         default=False,
         help="Wether to paralleize model across all available GPU's with accelerator",
     )
+    parser.add_argument(
+        "--download_queue_size",
+        type=int,
+        default=5,
+        help="Max download queue size",
+    )
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -245,7 +279,8 @@ if __name__ == "__main__":
     while True:
         main_loop(
             gpu_ids=args.gpu_ids,
-            parallelize=args.parallelize
+            parallelize=args.parallelize,
+            download_queue_size=args.download_queue_size
         )
         print("sleeping")
         time.sleep(60)
