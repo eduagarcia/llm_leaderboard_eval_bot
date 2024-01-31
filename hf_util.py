@@ -84,8 +84,8 @@ def download_model(name, revision="main", force=False):
     hf_info = scan_cache_dir()
     for repo in hf_info.repos:
         if repo.repo_id == name:
-            for revision in repo.revisions:
-                if commit_hash == revision.commit_hash and len(revision.files) >= 4 and revision.size_on_disk > 10*1024*1024: #10Mb
+            for r in repo.revisions:
+                if commit_hash == r.commit_hash and len(r.files) >= 4 and r.size_on_disk > 10*1024*1024: #10Mb
                     return commit_hash
                 
     if (getattr(config, "model_type") in MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING_NAMES):
