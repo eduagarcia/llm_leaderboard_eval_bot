@@ -11,8 +11,16 @@ import logging
 from threading import Thread, RLock
 import torch
 import gc
+import argparse
 
-def run_request(model_id, request_data, job_id=None, commit_hash=None):
+def run_request(
+        model_id,
+        request_data,
+        job_id=None,
+        commit_hash=None,
+        gpu_id = 0,
+        parallelize = True
+    ):
     start_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S.%f")
     request_data["status"] = "RUNNING"
     request_data["job_id"] = job_id
@@ -43,7 +51,12 @@ def run_request(model_id, request_data, job_id=None, commit_hash=None):
         
         model_args += extra_args
 
-        model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)},parallelize=True,device_map=auto"
+        if parallelize:
+            model_args += f",parallelize=True"
+        else:
+            model_args += f",device=cuda:{gpu_id}"
+
+        model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)}"
 
     results = run_eval_on_model(
         model=lm_eval_model_type,
@@ -99,13 +112,14 @@ def download_all_models(pending_df):
                     commit_hash = download_model(model_to_download, revision, force=(retrys >= 2))
                     quit_loop = True
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc()
+                    print(f'Error on downloading model {model_to_download}:', e)
                     retrys += 1
                     if retrys >= 3:
                         quit_loop = True
                         MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"] = str(e)
         with lock:
-            MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}")] = commit_hash
+            MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"] = commit_hash
         logging.info(f"Download of {request['model']} [{request['revision']}] completed.")
 
 MODELS_TO_PRIORITIZE = [
@@ -125,7 +139,42 @@ MODELS_TO_PRIORITIZE = [
     "AI-Sweden-Models/gpt-sw3-40b"
 ]
 
-def main_loop():
+def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
+    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
+    with open(request["filepath"], encoding='utf-8') as fp:
+        request_dict = json.load(fp)
+    logging.info(f"Starting job: {job_id} on model_id: {request['model_id']}")
+    try:
+        logging.info(f"Waiting download of {request['model']} [{request['revision']}]...")
+        while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED:
+            time.sleep(60)
+        with lock:
+            commit_hash = MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
+            del MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
+        if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
+            exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
+            raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}")
+        run_request(
+            request["model_id"],
+            request_dict,
+            job_id=job_id,
+            commit_hash=commit_hash,
+            gpu_id=gpu_id,
+            parallelize=parallelize
+        )
+    except Exception as e:
+        request_dict["status"] = "FAILED"
+        request_dict["error_msg"] = str(e)
+        request_dict["traceback"] = traceback.format_exc()
+        logging.error(request_dict["traceback"])
+        update_status_requests(request["model_id"], request_dict)
+    gc.collect()
+    torch.cuda.empty_cache()
+
+def main_loop(
+        gpu_ids = [0],
+        parallelize = False
+    ):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     logging.info("Running main loop")
     download_requests_repo()
@@ -142,35 +191,57 @@ def main_loop():
     download_thread = Thread(target=download_all_models, args=(pending_df,))
     download_thread.daemon = True
     download_thread.start()
-    for _, request in pending_df.iterrows():
-        with open(request["filepath"], encoding='utf-8') as fp:
-            request_dict = json.load(fp)
-        last_job_id += 1
-        logging.info(f"Starting job: {last_job_id} on model_id: {request['model_id']}")
-        try:
-            logging.info(f"Waiting download of {request['model']} [{request['revision']}]...")
-            while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED:
-                time.sleep(60)
-            with lock:
-                commit_hash = MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
-                del MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
-            if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
-                exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
-                raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}")
-            run_request(request["model_id"], request_dict, job_id=last_job_id, commit_hash=commit_hash)
-        except Exception as e:
-            request_dict["status"] = "FAILED"
-            request_dict["error_msg"] = str(e)
-            request_dict["traceback"] = traceback.format_exc()
-            logging.error(request_dict["traceback"])
-            update_status_requests(request["model_id"], request_dict)
-        gc.collect()
-        torch.cuda.empty_cache()
+
+    if parallelize:
+        gpu_ids = [gpu_ids[0]]
+    
+    if len(gpu_ids) == 1:
+        for _, request in pending_df.iterrows():
+            last_job_id += 1
+            wait_download_and_run_request(request, gpu_ids[0], parallelize, last_job_id)
+    else:
+        # spawn threads of wait_download_and_run_request for each gpu
+        thread_per_gpu = {}
+        for i, request in pending_df.iterrows():
+            last_job_id += 1
+            gpu_id = gpu_ids[i % len(gpu_ids)]
+            if gpu_id in thread_per_gpu:
+                thread_per_gpu[gpu_id].join()
+            thread = Thread(target=wait_download_and_run_request, args=(request, gpu_id, parallelize, last_job_id))
+            thread.daemon = True
+            thread_per_gpu[gpu_id] = thread
+            thread.start()
+
+        for thread in thread_per_gpu.values():
+            thread.join()
+
     download_thread.join()
     #free_up_cache()
 
+def parse_eval_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument(
+        "--gpu_ids",
+        type=str,
+        default="0",
+        help="GPU ids to utilize.",
+    )
+    parser.add_argument(
+        "--parallelize",
+        type=bool,
+        default=False,
+        help="Wether to paralleize model across all available GPU's with accelerator",
+    )
+    return parser.parse_args()
+
 if __name__ == "__main__":
+
+    args = parse_eval_args()
+    gpu_ids= args.gpu_ids.split(',')
     while True:
-        main_loop()
+        main_loop(
+            gpu_ids=args.gpu_ids,
+            parallelize=args.parallelize
+        )
         print("sleeping")
         time.sleep(60)
