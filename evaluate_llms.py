@@ -145,7 +145,7 @@ MODELS_TO_PRIORITIZE = [
     "Qwen/Qwen-7B",
     "datalawyer/legal-llama-v1",
     "datalawyer/legal-llama-v2",
-    "cognitivecomputations/dolphin-2.6-mistral-7b-dpo-laser"
+    "cognitivecomputations/dolphin-2.6-mistral-7b-dpo-laser",
     "dynamofl/dynamo-8B-v0.1",
     "BAAI/Aquila-7B",
     "deepseek-ai/deepseek-llm-7b-base",
@@ -203,13 +203,15 @@ def main_loop(
     update_eval_version(get_eval_results_df(), EVAL_VERSION)
     requests_df = get_eval_results_df()
     last_job_id = int(requests_df["job_id"].max())
+    
     pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])]
     
-    priority_df = pending_df[requests_df["model"].isin(MODELS_TO_PRIORITIZE)]
-    if len(priority_df) > 0:
-        pending_df = priority_df
+    pending_df['priority'] = pending_df["model"].apply(lambda x: int(x not in MODELS_TO_PRIORITIZE))
     
-    pending_df = pending_df.sort_values('submitted_time')
+    pending_df = pending_df.sort_values(['priority', 'submitted_time'])
+    print(pending_df.head)
+    pending_df = pending_df.drop(['priority'], axis=1)
+    
     download_thread = Thread(target=download_all_models, args=(pending_df,download_queue_size))
     download_thread.daemon = True
     download_thread.start()
