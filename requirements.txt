@@ -6,7 +6,9 @@ numpy
 accelerate
 auto-gptq
 optimum
-peft
+git+https://github.com/huggingface/peft.git
 tiktoken #qwenn stability
 einops #internlm
 transformers_stream_generator #qwenn
+flash_attn
+git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
