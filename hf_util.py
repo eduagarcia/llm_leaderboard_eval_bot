@@ -59,6 +59,7 @@ def _try_request_again(func, download_func, *args):
     for i in range(5):
         try:
             func(*args)
+            break
         except HfHubHTTPError as e:
             download_func()
             pass
