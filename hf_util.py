@@ -1,5 +1,5 @@
 from huggingface_hub import snapshot_download, HfApi
-from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, QUEUE_REPO, RESULTS_REPO, TRUST_REMOTE_CODE
+from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, QUEUE_REPO, RESULTS_REPO, RAW_RESULTS_REPO, TRUST_REMOTE_CODE
 from huggingface_hub import scan_cache_dir
 import json
 import os
@@ -55,6 +55,19 @@ def _upload_results(model_name, results_data):
         commit_message=f"Updating model {model_name}",
     )
 
+
+def _upload_raw_results(model_name):
+    #upload results
+    api.upload_folder(
+        folder_path=os.path.join(EVAL_REQUESTS_PATH, model_name),
+        repo_id=RAW_RESULTS_REPO,
+        path_in_repo=model_name,
+        allow_patterns="*.json",
+        ignore_patterns=["*/.ipynb_checkpoints/*", ".ipynb_checkpoints"],
+        repo_type="dataset",
+        commit_message=f"Uploading raw results for {model_name}",
+    )
+
 def _try_request_again(func, download_func, *args):
     for i in range(5):
         try:
@@ -71,6 +84,9 @@ def update_status_requests(*args):
 
 def upload_results(*args):
     return _try_request_again(_upload_results, lambda: time.sleep(1), *args)
+
+def upload_raw_results(*args):
+    return _try_request_again(_upload_raw_results, lambda: time.sleep(1), *args)
 
 def commit_requests_folder(commit_message):
     api.upload_folder(

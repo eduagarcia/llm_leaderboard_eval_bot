@@ -20,7 +20,7 @@ def get_config(name, default):
 
 QUEUE_REPO = get_config("QUEUE_REPO", "datalawyer/llm_leaderboard_requests")
 RESULTS_REPO = get_config("RESULTS_REPO", "datalawyer/llm_leaderboard_results")
-RESULTS_REPO = get_config("RAW_RESULTS_REPO", None)
+RAW_RESULTS_REPO = get_config("RAW_RESULTS_REPO", None)
 
 CACHE_PATH=get_config("HF_HOME", "./downloads")
 

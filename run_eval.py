@@ -24,8 +24,10 @@ def run_eval_on_model(
             "start_time": time.time()
         },
         "results": {
+            "all_grouped_average": 0,
+            "all_grouped": {},
             "all": {},
-            "all_grouped": {}
+            
         },
         "config_tasks": {},
         "versions": {
@@ -46,6 +48,9 @@ def run_eval_on_model(
             task_list.append(subtask)
             few_shot_list.append(str(task.few_shot))
             limit_list.append(str(task.limit))
+
+    output_raw_path = os.path.join(output_path, f"raw_{start_time}")
+
     result = evaluate(
         model=model,
         model_args=model_args + ",starting_max_length=4096",
@@ -56,9 +61,10 @@ def run_eval_on_model(
         max_batch_size=64,
         log_samples=True,
         show_config=True,
-        output_path=os.path.join(output_path, f"raw_{start_time}"),
+        output_path=output_raw_path,
         bootstrap_iters=0,
     )
+
     scores = result["results"]
     for task in Tasks:
         task = task.value
@@ -78,8 +84,10 @@ def run_eval_on_model(
             result_tasks['versions'][subtask_name] = result["configs"][subtask]["metadata"]["version"]
             result_tasks['summary_tasks'][subtask_full_name] = result["task_model_meta"][subtask]
             result_tasks['results']['all'][subtask_full_name] = main_score
-        result_tasks['results']['all_grouped'][f"harness|{task.benchmark}"] = sum(scores_grouped)/len(scores_grouped)
+        result_tasks['results']['all_grouped'][task.benchmark] = sum(scores_grouped)/len(scores_grouped)
 
+    result_tasks['results']['all_grouped_average'] = sum(result_tasks['results']['all_grouped'].values())/len(result_tasks['results']['all_grouped'].values())
+    
     result_tasks['config_general']['end_time'] = time.time()
     result_tasks['config_general']['total_evaluation_time_seconds'] = result_tasks['config_general']['end_time'] - result_tasks['config_general']['start_time']
 

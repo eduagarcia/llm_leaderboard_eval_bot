@@ -1,9 +1,10 @@
-from hf_util import download_requests_repo, update_status_requests, upload_results, free_up_cache, download_model
+from hf_util import download_requests_repo, update_status_requests, upload_results, free_up_cache, download_model, upload_raw_results
 from run_eval import run_eval_on_model
 from datetime import datetime, timezone
 from eval_queue import get_eval_results_df, update_eval_version
 import os
-from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, EVAL_VERSION, TRUST_REMOTE_CODE
+from envs import EVAL_REQUESTS_PATH, EVAL_RESULTS_PATH, EVAL_VERSION, TRUST_REMOTE_CODE, RAW_RESULTS_REPO
+from tasks import Tasks
 import traceback
 import json
 import time
@@ -85,7 +86,25 @@ def run_request(
 
     request_data["status"] = "FINISHED"
     request_data["eval_version"] = EVAL_VERSION
+
+    #update new results
+    if "result_metrics" not in request_data:
+        request_data["result_metrics"] = {}
+    for benchmark in results["results"]["all_grouped"]:
+        request_data["result_metrics"][benchmark] = results["results"]["all_grouped"][benchmark]
+    
+    #clean up old benchmarks
+    valid_task_list = [task.value.benchmark for task in Tasks]
+    for benchmark in list(request_data["result_metrics"].keys()):
+        if benchmark not in valid_task_list:
+            del request_data["result_metrics"][benchmark]
+
+    #calculate new average
+    request_data["result_metrics_average"]= sum(request_data["result_metrics"].values())/len(request_data["result_metrics"])
     update_status_requests(model_id, request_data)
+
+    if RAW_RESULTS_REPO is not None:
+        upload_raw_results(request_data['model'])
 
 lock = RLock()
 MODELS_DOWNLOADED = {}

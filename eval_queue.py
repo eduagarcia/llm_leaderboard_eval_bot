@@ -22,7 +22,9 @@ COLS = [
     "error_msg",
     "traceback",
     "filepath",
-    "eval_version"
+    "eval_version",
+    "result_metrics",
+    "result_metrics_average"
 ]
 
 def get_eval_results_df():
