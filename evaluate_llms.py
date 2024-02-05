@@ -1,4 +1,4 @@
-from hf_util import download_requests_repo, update_status_requests, upload_results, free_up_cache, download_model, upload_raw_results
+from hf_util import download_requests_repo, update_status_requests, upload_results, free_up_cache, download_model, upload_raw_results, delete_model_from_cache
 from run_eval import run_eval_on_model
 from datetime import datetime, timezone
 from eval_queue import get_eval_results_df, update_eval_version
@@ -106,11 +106,16 @@ def run_request(
     if RAW_RESULTS_REPO is not None:
         upload_raw_results(request_data['model'])
 
+    #delete_model_from_cache(commit_hash)
+
 lock = RLock()
+MODELS_TO_DOWNLOAD = []
 MODELS_DOWNLOADED = {}
 MODELS_DOWNLOADED_FAILED = {}
 def download_all_models(pending_df, max_queue_size=5):
-    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
+    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED, MODELS_TO_DOWNLOAD
+    for _, request in pending_df.iterrows():
+        MODELS_TO_DOWNLOAD.append(f"{request['model']}_{request['revision']}")
     for _, request in pending_df.iterrows():
         while len(MODELS_DOWNLOADED) >= max_queue_size:
             time.sleep(60)
@@ -156,36 +161,25 @@ MODELS_TO_PRIORITIZE = [
     "AI-Sweden-Models/gpt-sw3-40b"
 ]
 
-MODELS_TO_PRIORITIZE = [
-    "Deci/DeciLM-6b",
-    "Qwen/Qwen-7B",
-    "datalawyer/legal-llama-v1",
-    "datalawyer/legal-llama-v2",
-    "cognitivecomputations/dolphin-2.6-mistral-7b-dpo-laser",
-    "dynamofl/dynamo-8B-v0.1",
-    "BAAI/Aquila-7B",
-    "deepseek-ai/deepseek-llm-7b-base",
-    "baichuan-inc/Baichuan2-7B-Base",
-    "lrds-code/boana-7b-instruct",
-    "xverse/XVERSE-7B"
-]
+MODELS_TO_PRIORITIZE = []
 
 
 def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
-    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
+    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED, MODELS_TO_DOWNLOAD
     with open(request["filepath"], encoding='utf-8') as fp:
         request_dict = json.load(fp)
     logging.info(f"Starting job: {job_id} on model_id: {request['model_id']}")
     try:
         logging.info(f"Waiting download of {request['model']} [{request['revision']}]...")
-        while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED:
-            time.sleep(60)
-        with lock:
-            commit_hash = MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
-            del MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
-        if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
-            exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
-            raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}")
+        if f"{request['model']}_{request['revision']}" in MODELS_TO_DOWNLOAD:
+            while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED:
+                time.sleep(60)
+            with lock:
+                commit_hash = MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
+                del MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
+            if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
+                exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
+                raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}")
         run_request(
             request["model_id"],
             request_dict,
@@ -208,6 +202,18 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
             with torch.cuda.device(f"cuda:{gpu_id}"):
                 torch.cuda.empty_cache()
 
+def get_pending_df():
+    requests_df = get_eval_results_df()
+    pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])]
+    
+    pending_df['priority'] = pending_df["model"].apply(lambda x: int(x not in MODELS_TO_PRIORITIZE))
+    pending_df['source_priority'] = pending_df["source"].apply(lambda x: {"leaderboard": 0, "script": 1}.get(x, 2))
+    
+    pending_df = pending_df.sort_values(['priority', 'source_priority', 'submitted_time'])
+    pending_df = pending_df.drop(['priority', 'source_priority'], axis=1)
+    
+    return pending_df
+
 def main_loop(
         gpu_ids = [0],
         parallelize = False,
@@ -216,17 +222,12 @@ def main_loop(
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     logging.info("Running main loop")
     download_requests_repo()
-    update_eval_version(get_eval_results_df(), EVAL_VERSION)
     requests_df = get_eval_results_df()
+    update_eval_version(requests_df, EVAL_VERSION)
+
     last_job_id = int(requests_df["job_id"].max())
     
-    pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])]
-    
-    pending_df['priority'] = pending_df["model"].apply(lambda x: int(x not in MODELS_TO_PRIORITIZE))
-    
-    pending_df = pending_df.sort_values(['priority', 'submitted_time'])
-    print(pending_df.head)
-    pending_df = pending_df.drop(['priority'], axis=1)
+    pending_df = get_pending_df()
     
     download_thread = Thread(target=download_all_models, args=(pending_df,download_queue_size))
     download_thread.daemon = True
@@ -236,8 +237,9 @@ def main_loop(
         gpu_ids = [gpu_ids[0]]
     
     if len(gpu_ids) == 1:
-        for _, request in pending_df.iterrows():
-            last_job_id += 1
+        while len(pending_df) > 0:
+            pending_df = get_pending_df()
+            request = pending_df.iloc[0]
             wait_download_and_run_request(request, gpu_ids[0], parallelize, last_job_id)
     else:
         # spawn threads of wait_download_and_run_request for each gpu
@@ -271,8 +273,17 @@ def main_loop(
             threads.append(thread)
 
         # Enqueue tasks
-        for _, request in pending_df.iterrows():
-            task_queue.put(request)
+        max_queue_size = len(gpu_ids) + 2
+        while len(pending_df) > 0:
+            pending_df = get_pending_df()
+            if task_queue.qsize() < max_queue_size:
+                for _, request in pending_df.iterrows():
+                    task_queue.put(request)
+                    #if theres max tasks on queue, wait for one to finish
+                    if task_queue.qsize() >= max_queue_size:
+                        break
+            else:
+                time.sleep(60)
         
         for _ in gpu_ids:
             task_queue.put(None)  # Sentinel values to stop the worker threads

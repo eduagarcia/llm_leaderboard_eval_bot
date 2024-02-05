@@ -76,8 +76,8 @@ tasks:
     few_shot: 15
     limit: null
     baseline: 50.0 #random baseline
-    human_baseline: "N/A"
-    expert_human_baseline: "N/A"
+    human_baseline: null
+    expert_human_baseline: null
     description: "ASSIN 2 (Avaliação de Similaridade Semântica e Inferência Textual - 
     Evaluating Semantic Similarity and Textual Entailment) is the second edition of ASSIN, 
     an evaluation shared task in the scope of the computational processing 
@@ -95,8 +95,8 @@ tasks:
     few_shot: 15
     limit: null
     baseline: 0.0 #random baseline
-    human_baseline: "N/A"
-    expert_human_baseline: "N/A"
+    human_baseline: null
+    expert_human_baseline: null
     description: "Same as dataset as above. Semantic Textual Similarity (STS) 
     ‘measures the degree of semantic equivalence between two sentences’."
     link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark
@@ -110,8 +110,8 @@ tasks:
     few_shot: 15
     limit: null
     baseline: 45.6 #random baseline
-    human_baseline: "N/A"
-    expert_human_baseline: "N/A"
+    human_baseline: null
+    expert_human_baseline: null
     description: "FaQuAD is a Portuguese reading comprehension dataset that follows the format of the 
     Stanford Question Answering Dataset (SQuAD). The dataset aims to address the problem of 
     abundant questions sent by academics whose answers are found in available institutional 
@@ -135,8 +135,8 @@ tasks:
     few_shot: 15
     limit: 500
     baseline: 29.5 #random baseline [3.3, 48.8, 33.1, 33.0]
-    human_baseline: "N/A"
-    expert_human_baseline: "N/A"
+    human_baseline: null
+    expert_human_baseline: null
     description: "SPARROW is a multilingual evaluation benchmark for sociopragmatic meaning understanding. 
     SPARROW comprises 169 datasets encompassing 64 different languages, 
     this split evaluates only on the validation set of 4 datasets avaliable for the Portuguese language.

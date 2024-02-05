@@ -108,6 +108,18 @@ def free_up_cache():
     del_strategy = hf_info.delete_revisions(*revisions)
     del_strategy.execute()
 
+def delete_model_from_cache(commit_hash):
+    hf_info = scan_cache_dir()
+    revisions = []
+    for repo in hf_info.repos:
+        for revision in repo.revisions:
+            if commit_hash == revision.commit_hash:
+                revisions.append(revision.commit_hash)
+    if len(revisions) == 0:
+        return
+    del_strategy = hf_info.delete_revisions(*revisions)
+    del_strategy.execute()
+
 def download_model(name, revision="main", force=False):
     config = AutoConfig.from_pretrained(
         name, revision=revision, trust_remote_code=TRUST_REMOTE_CODE, force_download=force, resume_download=not force

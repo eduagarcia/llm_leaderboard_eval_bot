@@ -24,7 +24,8 @@ COLS = [
     "filepath",
     "eval_version",
     "result_metrics",
-    "result_metrics_average"
+    "result_metrics_average",
+    "source"
 ]
 
 def get_eval_results_df():
@@ -54,6 +55,7 @@ def get_eval_results_df():
 
     df = pd.DataFrame.from_records(all_evals, columns=COLS)
     df["lm_eval_model_type"] = df["lm_eval_model_type"].fillna("huggingface")
+    df["source"] = df["source"].fillna("script")
     return df  
 
 def update_eval_version(requests_df, eval_version):
