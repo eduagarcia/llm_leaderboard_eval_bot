@@ -126,6 +126,10 @@ def evaluate(
             num_fewshots = [None if n == 'None' else int(n) for n in num_fewshot.split(',')]
         else:
             num_fewshots = int(num_fewshot)
+    
+    if isinstance(num_fewshots, list):
+        unsorted_task_list = tasks.split(",")
+        num_fewshots = [num_fewshots[unsorted_task_list.index(task)] for task in task_names]
 
     limits = limit
     if limit is not None and isinstance(limit, str):
@@ -133,6 +137,10 @@ def evaluate(
             limits = [None if n == 'None' else float(n) for n in limit.split(',')]
         else:
             limits = float(limit)
+
+    if isinstance(limits, list):
+        unsorted_task_list = tasks.split(",")
+        limits = [limits[unsorted_task_list.index(task)] for task in task_names]
 
     results = evaluator.simple_evaluate(
         model=model,

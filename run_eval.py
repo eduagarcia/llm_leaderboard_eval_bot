@@ -24,7 +24,8 @@ def run_eval_on_model(
             "start_time": time.time()
         },
         "results": {
-            "all": {}
+            "all": {},
+            "all_grouped": {}
         },
         "config_tasks": {},
         "versions": {
@@ -34,44 +35,67 @@ def run_eval_on_model(
         "summary_general": {}
     }
     all_results = defaultdict(list)
+    task_list = []
+    few_shot_list = []
+    limit_list = []
+    task_order = []
     for task in Tasks:
         task = task.value
-        result = evaluate(
-            model=model,
-            model_args=model_args + ",starting_max_length=4096",
-            tasks=",".join(task.task_list),
-            num_fewshot=task.few_shot,
-            limit=task.limit,
-            batch_size='auto',
-            max_batch_size=64,
-            log_samples=True,
-            show_config=True,
-            output_path=os.path.join(output_path, f"raw_{start_time}", task.benchmark)
-        )
-        scores = result["results"]
-        for subtask in scores:
-            new_task_scores = {k.split(',')[0]:v for k,v in scores[subtask].items() if 'k' != 'alias'}
-            for score_name in new_task_scores:
-                score = new_task_scores[score_name]
-                if not (isinstance(score, float) or isinstance(score, int)):
-                    continue
-                all_results[score_name].append(score)
+        for subtask in task.task_list:
+            task_order.append(task)
+            task_list.append(subtask)
+            few_shot_list.append(str(task.few_shot))
+            limit_list.append(str(task.limit))
+    result = evaluate(
+        model=model,
+        model_args=model_args + ",starting_max_length=4096",
+        tasks=",".join(task_list),
+        num_fewshot=",".join(few_shot_list),
+        limit=",".join(limit_list),
+        batch_size='auto',
+        max_batch_size=64,
+        log_samples=True,
+        show_config=True,
+        output_path=os.path.join(output_path, f"raw_{start_time}"),
+        bootstrap_iters=0,
+    )
+    scores = result["results"]
+    for task in Tasks:
+        task = task.value
+        scores_grouped = []
+        for subtask in task.task_list:
+            new_task_scores = {k:v for k,v in scores[subtask].items() if k != 'alias'}
+            main_score = new_task_scores[task.metric + ',all']
+
+            new_task_scores['main_score'] = main_score
+            scores_grouped.append(main_score)
+
             subtask_name = f"harness|{task.benchmark}|{subtask}"
             subtask_full_name = f"{subtask_name}|{task.limit}|{task.few_shot}"
+
             result_tasks['results'][subtask_full_name] = new_task_scores
             result_tasks['config_tasks'][subtask_name] = "LM Harness task"
-            result_tasks['versions'][subtask_full_name] = result["configs"][subtask]["metadata"]["version"]
-            result_tasks['summary_tasks'][subtask_full_name] = {}
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    for score_name in all_results:
-        result_tasks['results']['all'][score_name] = sum(all_results[score_name])/len(all_results[score_name])
+            result_tasks['versions'][subtask_name] = result["configs"][subtask]["metadata"]["version"]
+            result_tasks['summary_tasks'][subtask_full_name] = result["task_model_meta"][subtask]
+            result_tasks['results']['all'][subtask_full_name] = main_score
+        result_tasks['results']['all_grouped'][f"harness|{task.benchmark}"] = sum(scores_grouped)/len(scores_grouped)
 
     result_tasks['config_general']['end_time'] = time.time()
     result_tasks['config_general']['total_evaluation_time_seconds'] = result_tasks['config_general']['end_time'] - result_tasks['config_general']['start_time']
+
+    keys = ["truncated", "non_truncated", "padded", "non_padded", "fewshots_truncated"]
+    for k in keys:
+        if k in result['model_meta']:
+            result_tasks["summary_general"][k] = result['model_meta'].pop(k)
+
+    result_tasks['config_general'].update(result['model_meta'])
+
     with open(os.path.join(output_path, f"results_{start_time}.json"), "w", encoding='utf-8') as f:
         json.dump(result_tasks, f, indent=4, ensure_ascii=False)
+
+    gc.collect()
+    torch.cuda.empty_cache()
+    
     return result_tasks
 
 if __name__ == "__main__":

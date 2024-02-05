@@ -69,20 +69,17 @@ def run_request(
 
     results["config_general"]["model_name"] = request_data["model"]
     results["config_general"]["model_dtype"] = request_data["precision"]
-    results["config_general"]["model_size"] = None
     results["config_general"]["job_id"] = job_id
     results["config_general"]["model_id"] = model_id
     results["config_general"]["model_base_model"] = request_data["base_model"]
     results["config_general"]["model_weight_type"] = request_data["weight_type"]
     results["config_general"]["model_revision"] = request_data["revision"]
     results["config_general"]["model_private"] = request_data["private"]
-    results["config_general"]["model_params"] = request_data["params"]
     results["config_general"]["model_type"] = request_data["model_type"]
     results["config_general"]["model_architectures"] = request_data["architectures"]
     results["config_general"]["submitted_time"] = request_data["submitted_time"]
     results["config_general"]["lm_eval_model_type"] = lm_eval_model_type
     results["config_general"]["eval_version"] = EVAL_VERSION
-    results["config_general"]["model_sha"] = commit_hash
 
     upload_results(request_data["model"], results)
 

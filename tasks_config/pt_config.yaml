@@ -78,12 +78,12 @@ tasks:
     baseline: 50.0 #random baseline
     human_baseline: "N/A"
     expert_human_baseline: "N/A"
-    description: ASSIN 2 (Avaliação de Similaridade Semântica e Inferência Textual - 
+    description: "ASSIN 2 (Avaliação de Similaridade Semântica e Inferência Textual - 
     Evaluating Semantic Similarity and Textual Entailment) is the second edition of ASSIN, 
     an evaluation shared task in the scope of the computational processing 
     of Portuguese. Recognising Textual Entailment (RTE), also called Natural Language 
     Inference (NLI), is the task of predicting if a given text (premise) entails (implies) in
-    other text (hypothesis).
+    other text (hypothesis)."
     link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark
     sources: ["https://sites.google.com/view/assin2/", "https://huggingface.co/datasets/assin2"]
   assin2_sts:
@@ -97,8 +97,8 @@ tasks:
     baseline: 0.0 #random baseline
     human_baseline: "N/A"
     expert_human_baseline: "N/A"
-    description: Same as dataset as above. Semantic Textual Similarity (STS) 
-    ‘measures the degree of semantic equivalence between two sentences’.
+    description: "Same as dataset as above. Semantic Textual Similarity (STS) 
+    ‘measures the degree of semantic equivalence between two sentences’."
     link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark
     sources: ["https://sites.google.com/view/assin2/", "https://huggingface.co/datasets/assin2"]
   faquad_nli:
@@ -137,11 +137,11 @@ tasks:
     baseline: 29.5 #random baseline [3.3, 48.8, 33.1, 33.0]
     human_baseline: "N/A"
     expert_human_baseline: "N/A"
-    description: SPARROW is a multilingual evaluation benchmark for sociopragmatic meaning understanding. 
+    description: "SPARROW is a multilingual evaluation benchmark for sociopragmatic meaning understanding. 
     SPARROW comprises 169 datasets encompassing 64 different languages, 
     this split evaluates only on the validation set of 4 datasets avaliable for the Portuguese language.
     One on hate speech detection by Fortuna et al. (2019), one on emotion detection by Cortiz et al. (2021) 
     and two on sentiment analysis by Mozetic et al. (2016) and Brum et al. (2018).
-    All were extracted and manually annotated from Twitter/X.
+    All were extracted and manually annotated from Twitter/X."
     link: https://huggingface.co/datasets/UBC-NLP/sparrow
     sources: ["https://sparrow.dlnlp.ai/", "https://aclanthology.org/W19-3510/", "https://arxiv.org/abs/2108.07638", "https://aclanthology.org/L18-1658/", "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0155036"]
