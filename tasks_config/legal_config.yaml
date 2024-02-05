@@ -1,4 +1,8 @@
 version: 1.0.0
+config:
+  QUEUE_REPO: datalawyer/llm_leaderboard_requests
+  RESULTS_REPO: datalawyer/llm_leaderboard_results
+  TRUST_REMOTE_CODE: false
 tasks:
   oab_exams:
     benchmark: oab_exams
@@ -34,7 +38,7 @@ tasks:
     metric: f1_macro
     few_shot: 15
     limit: 2000
-    baseline: 10.0
+    baseline: 9.3
     human_baseline: 90.0
     description: A classification dataset
     link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark

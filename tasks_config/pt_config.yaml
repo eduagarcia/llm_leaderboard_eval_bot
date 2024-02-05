@@ -1,0 +1,147 @@
+version: 1.0.0
+config:
+  QUEUE_REPO: eduagarcia-temp/llm_pt_leaderboard_requests
+  RESULTS_REPO: eduagarcia-temp/llm_pt_leaderboard_results
+  RAW_RESULTS_REPO: eduagarcia-temp/llm_pt_leaderboard_raw_results
+  TRUST_REMOTE_CODE: false
+tasks:
+  enem_challenge:
+    benchmark: enem_challenge
+    col_name: ENEM
+    task_list:
+    - enem_challenge
+    metric: acc
+    few_shot: 3
+    limit: null
+    baseline: 20.0 #random baseline
+    #https://www.sejalguem.com/enem
+    #https://vestibular.brasilescola.uol.com.br/enem/confira-as-medias-e-notas-maximas-e-minimas-do-enem-2020/349732.html
+    human_baseline: 35.0 # ~60 / 180 acertos - nota  ~500
+    expert_human_baseline: 70.0 # ~124 / 180 acertos - nota ~700
+    description: "The Exame Nacional do Ensino Médio (ENEM) is an advanced High-School
+      level exam widely applied every year by the Brazilian government to students that 
+      wish to undertake a University degree. This dataset contains 1,430 questions that don't require
+      image understanding of the exams from 2010 to 2018, 2022 and 2023."  
+    link: https://huggingface.co/datasets/eduagarcia/enem_challenge
+    sources: ["https://www.ime.usp.br/~ddm/project/enem/", "https://github.com/piresramon/gpt-4-enem", "https://huggingface.co/datasets/maritaca-ai/enem"]
+    baseline_sources: ["https://www.sejalguem.com/enem", "https://vestibular.brasilescola.uol.com.br/enem/confira-as-medias-e-notas-maximas-e-minimas-do-enem-2020/349732.html"]
+  bluex:
+    benchmark: bluex
+    col_name: BLUEX
+    task_list:
+    - bluex
+    metric: acc
+    few_shot: 3
+    limit: null
+    baseline: 22.5 #random baseline
+    #https://www.comvest.unicamp.br/wp-content/uploads/2023/08/Relatorio_F1_2023.pdf 56% mean - 88% @ top-.99 
+    #https://acervo.fuvest.br/fuvest/2018/FUVEST_2018_indice_discriminacao_1_fase_ins.pdf 43,4%  - ~77% @ top-.99 
+    human_baseline: 50.0
+    expert_human_baseline: 82.5
+    description: "BLUEX is a multimodal dataset consisting of the two leading 
+    university entrance exams conducted in Brazil: Convest (Unicamp) and Fuvest (USP), 
+    spanning from 2018 to 2024. The benchmark comprises of 724 questions that do not have accompanying images"   
+    link: https://huggingface.co/datasets/eduagarcia-temp/BLUEX_without_images
+    sources: ["https://github.com/portuguese-benchmark-datasets/bluex", "https://huggingface.co/datasets/portuguese-benchmark-datasets/BLUEX"]
+    baseline_sources: ["https://www.comvest.unicamp.br/wp-content/uploads/2023/08/Relatorio_F1_2023.pdf", "https://acervo.fuvest.br/fuvest/2018/FUVEST_2018_indice_discriminacao_1_fase_ins.pdf"]
+  oab_exams:
+    benchmark: oab_exams
+    col_name: OAB Exams
+    task_list:
+    - oab_exams
+    metric: acc
+    few_shot: 3
+    limit: null
+    baseline: 25.0 #random baseline
+    #https://fgvprojetos.fgv.br/publicacao/exame-de-ordem-em-numeros # 46%
+    # http://fgvprojetos.fgv.br/publicacao/exame-de-ordem-em-numeros-vol3
+    # Acertou +70% = 17214 / 638500 = top-97,5%
+    # desvio top-97,5% -> 46 - 70.0% = 24 
+    # z score 97,5% ~ 1,9675
+    # desvio padrao estimado -> 12,2
+    # top 99% = 46 + 2,33*12,2 = ~75.0
+    human_baseline: 46.0
+    expert_human_baseline: 75.0
+    description: OAB Exams is a dataset of more than 2,000 questions from the Brazilian Bar
+      Association's exams, from 2010 to 2018.
+    link: https://huggingface.co/datasets/eduagarcia/oab_exams
+    sources: ["https://github.com/legal-nlp/oab-exams"]
+    baseline_sources: ["http://fgvprojetos.fgv.br/publicacao/exame-de-ordem-em-numeros", "http://fgvprojetos.fgv.br/publicacao/exame-de-ordem-em-numeros-vol2", "http://fgvprojetos.fgv.br/publicacao/exame-de-ordem-em-numeros-vol3"]
+  assin2_rte:
+    benchmark: assin2_rte
+    col_name: ASSIN2 RTE
+    task_list:
+    - assin2_rte
+    metric: f1_macro
+    few_shot: 15
+    limit: null
+    baseline: 50.0 #random baseline
+    human_baseline: "N/A"
+    expert_human_baseline: "N/A"
+    description: ASSIN 2 (Avaliação de Similaridade Semântica e Inferência Textual - 
+    Evaluating Semantic Similarity and Textual Entailment) is the second edition of ASSIN, 
+    an evaluation shared task in the scope of the computational processing 
+    of Portuguese. Recognising Textual Entailment (RTE), also called Natural Language 
+    Inference (NLI), is the task of predicting if a given text (premise) entails (implies) in
+    other text (hypothesis).
+    link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark
+    sources: ["https://sites.google.com/view/assin2/", "https://huggingface.co/datasets/assin2"]
+  assin2_sts:
+    benchmark: assin2_sts
+    col_name: ASSIN2 STS
+    task_list:
+    - assin2_sts
+    metric: pearson
+    few_shot: 15
+    limit: null
+    baseline: 0.0 #random baseline
+    human_baseline: "N/A"
+    expert_human_baseline: "N/A"
+    description: Same as dataset as above. Semantic Textual Similarity (STS) 
+    ‘measures the degree of semantic equivalence between two sentences’.
+    link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark
+    sources: ["https://sites.google.com/view/assin2/", "https://huggingface.co/datasets/assin2"]
+  faquad_nli:
+    benchmark: faquad_nli
+    col_name: FAQUAD NLI
+    task_list:
+    - faquad_nli
+    metric: f1_macro
+    few_shot: 15
+    limit: null
+    baseline: 45.6 #random baseline
+    human_baseline: "N/A"
+    expert_human_baseline: "N/A"
+    description: "FaQuAD is a Portuguese reading comprehension dataset that follows the format of the 
+    Stanford Question Answering Dataset (SQuAD). The dataset aims to address the problem of 
+    abundant questions sent by academics whose answers are found in available institutional 
+    documents in the Brazilian higher education system. It consists of 900 questions about 
+    249 reading passages taken from 18 official documents of a computer science college
+    from a Brazilian federal university and 21 Wikipedia articles related to the 
+    Brazilian higher education system. FaQuAD-NLI is a modified version of the 
+    FaQuAD dataset that repurposes the question answering task as a textual 
+    entailment task between a question and its possible answers."
+    link: https://huggingface.co/datasets/ruanchaves/faquad-nli
+    sources: ["https://github.com/liafacom/faquad/"]
+  sparrow_pt:
+    benchmark: sparrow_pt
+    col_name: Sparrow POR
+    task_list:
+    - sparrow_emotion-2021-cortiz-por
+    - sparrow_hate-2019-fortuna-por
+    - sparrow_sentiment-2016-mozetic-por
+    - sparrow_sentiment-2018-brum-por
+    metric: f1_macro
+    few_shot: 15
+    limit: 500
+    baseline: 29.5 #random baseline [3.3, 48.8, 33.1, 33.0]
+    human_baseline: "N/A"
+    expert_human_baseline: "N/A"
+    description: SPARROW is a multilingual evaluation benchmark for sociopragmatic meaning understanding. 
+    SPARROW comprises 169 datasets encompassing 64 different languages, 
+    this split evaluates only on the validation set of 4 datasets avaliable for the Portuguese language.
+    One on hate speech detection by Fortuna et al. (2019), one on emotion detection by Cortiz et al. (2021) 
+    and two on sentiment analysis by Mozetic et al. (2016) and Brum et al. (2018).
+    All were extracted and manually annotated from Twitter/X.
+    link: https://huggingface.co/datasets/UBC-NLP/sparrow
+    sources: ["https://sparrow.dlnlp.ai/", "https://aclanthology.org/W19-3510/", "https://arxiv.org/abs/2108.07638", "https://aclanthology.org/L18-1658/", "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0155036"]

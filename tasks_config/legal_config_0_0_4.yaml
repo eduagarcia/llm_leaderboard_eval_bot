@@ -1,4 +1,8 @@
 version: 0.0.4
+config:
+  QUEUE_REPO: datalawyer/llm_leaderboard_requests
+  RESULTS_REPO: datalawyer/llm_leaderboard_results
+  TRUST_REMOTE_CODE: false
 tasks:
   oab_exams:
     benchmark: oab_exams
