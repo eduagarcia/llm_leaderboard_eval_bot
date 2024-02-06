@@ -25,6 +25,7 @@ def run_eval_on_model(
         },
         "results": {
             "all_grouped_average": 0,
+            "all_grouped_npm": 0,
             "all_grouped": {},
             "all": {},
             
@@ -58,14 +59,15 @@ def run_eval_on_model(
         num_fewshot=",".join(few_shot_list),
         limit=",".join(limit_list),
         batch_size='auto',
-        max_batch_size=64,
+        max_batch_size=256,
         log_samples=True,
         show_config=True,
         output_path=output_raw_path,
         bootstrap_iters=0,
     )
-
+    
     scores = result["results"]
+    npm = []
     for task in Tasks:
         task = task.value
         scores_grouped = []
@@ -84,9 +86,12 @@ def run_eval_on_model(
             result_tasks['versions'][subtask_name] = result["configs"][subtask]["metadata"]["version"]
             result_tasks['summary_tasks'][subtask_full_name] = result["task_model_meta"][subtask]
             result_tasks['results']['all'][subtask_full_name] = main_score
-        result_tasks['results']['all_grouped'][task.benchmark] = sum(scores_grouped)/len(scores_grouped)
+        grouped_score = sum(scores_grouped)/len(scores_grouped)
+        result_tasks['results']['all_grouped'][task.benchmark] = grouped_score
+        npm.append((grouped_score-(task.baseline/100)) / (1.0-(task.baseline/100)))
 
     result_tasks['results']['all_grouped_average'] = sum(result_tasks['results']['all_grouped'].values())/len(result_tasks['results']['all_grouped'].values())
+    result_tasks['results']['all_grouped_npm'] = sum(npm)/len(npm)
     
     result_tasks['config_general']['end_time'] = time.time()
     result_tasks['config_general']['total_evaluation_time_seconds'] = result_tasks['config_general']['end_time'] - result_tasks['config_general']['start_time']

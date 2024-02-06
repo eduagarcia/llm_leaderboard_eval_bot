@@ -132,7 +132,7 @@ tasks:
     - sparrow_sentiment-2016-mozetic-por
     - sparrow_sentiment-2018-brum-por
     metric: f1_macro
-    few_shot: 15
+    few_shot: 25
     limit: 500
     baseline: 29.5 #random baseline [3.3, 48.8, 33.1, 33.0]
     human_baseline: null

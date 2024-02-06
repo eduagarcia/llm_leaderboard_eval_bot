@@ -101,12 +101,16 @@ def run_request(
 
     #calculate new average
     request_data["result_metrics_average"]= sum(request_data["result_metrics"].values())/len(request_data["result_metrics"])
+    npm = []
+    for task in Tasks:
+        npm.append((request_data["result_metrics"][task.value.benchmark]-(task.value.baseline/100)) / (1.0-(task.value.baseline/100)))
+    request_data["result_metrics_npm"] = sum(npm)/len(npm)
     update_status_requests(model_id, request_data)
 
     if RAW_RESULTS_REPO is not None:
         upload_raw_results(request_data['model'])
 
-    #delete_model_from_cache(commit_hash)
+    delete_model_from_cache(commit_hash)
 
 lock = RLock()
 MODELS_TO_DOWNLOAD = []
@@ -204,7 +208,7 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
 
 def get_pending_df():
     requests_df = get_eval_results_df()
-    pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])]
+    pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])].copy()
     
     pending_df['priority'] = pending_df["model"].apply(lambda x: int(x not in MODELS_TO_PRIORITIZE))
     pending_df['source_priority'] = pending_df["source"].apply(lambda x: {"leaderboard": 0, "script": 1}.get(x, 2))
@@ -243,7 +247,8 @@ def main_loop(
             wait_download_and_run_request(request, gpu_ids[0], parallelize, last_job_id)
     else:
         # spawn threads of wait_download_and_run_request for each gpu
-        task_queue = Queue()
+        max_queue_size = len(gpu_ids) + 1
+        task_queue = Queue(maxsize=max_queue_size)
         job_id_counter = count(start=last_job_id)  # Thread-safe counter for job_id
         job_id_lock = Lock()
 
@@ -273,18 +278,17 @@ def main_loop(
             threads.append(thread)
 
         # Enqueue tasks
-        max_queue_size = len(gpu_ids) + 2
+        models_queued = []
         while len(pending_df) > 0:
             pending_df = get_pending_df()
-            if task_queue.qsize() < max_queue_size:
-                for _, request in pending_df.iterrows():
-                    task_queue.put(request)
-                    #if theres max tasks on queue, wait for one to finish
-                    if task_queue.qsize() >= max_queue_size:
-                        break
-            else:
-                time.sleep(60)
-        
+            pending_df = pending_df[~(pending_df["model_id"].isin(models_queued))]
+            loop_size = len(gpu_ids) if len(gpu_ids) < len(pending_df) else len(pending_df)
+            for i in range(loop_size):
+                request = pending_df.iloc[i]
+                task_queue.put(request)
+                print(f"{request["model_id"]} queued")
+                models_queued.append(request["model_id"])
+                
         for _ in gpu_ids:
             task_queue.put(None)  # Sentinel values to stop the worker threads
 

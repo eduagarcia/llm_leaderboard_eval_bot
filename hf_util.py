@@ -7,6 +7,7 @@ import shutil
 import time
 from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 from huggingface_hub.utils._errors import HfHubHTTPError
+import traceback
 
 from transformers.models.auto.modeling_auto import (
     MODEL_FOR_CAUSAL_LM_MAPPING_NAMES,
@@ -59,10 +60,10 @@ def _upload_results(model_name, results_data):
 def _upload_raw_results(model_name):
     #upload results
     api.upload_folder(
-        folder_path=os.path.join(EVAL_REQUESTS_PATH, model_name),
+        folder_path=os.path.join(EVAL_RESULTS_PATH, model_name),
         repo_id=RAW_RESULTS_REPO,
         path_in_repo=model_name,
-        allow_patterns="*.json",
+        allow_patterns=["*.json", "*.jsonl"],
         ignore_patterns=["*/.ipynb_checkpoints/*", ".ipynb_checkpoints"],
         repo_type="dataset",
         commit_message=f"Uploading raw results for {model_name}",
@@ -75,6 +76,7 @@ def _try_request_again(func, download_func, *args):
             break
         except HfHubHTTPError as e:
             download_func()
+            traceback.print_exc()
             pass
         except Exception as e:
             raise e
