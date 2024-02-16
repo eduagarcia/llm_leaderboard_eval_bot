@@ -110,7 +110,7 @@ def run_request(
     if RAW_RESULTS_REPO is not None:
         upload_raw_results(request_data['model'])
 
-    delete_model_from_cache(commit_hash)
+    #delete_model_from_cache(commit_hash)
 
 lock = RLock()
 MODELS_TO_DOWNLOAD = []
@@ -164,8 +164,6 @@ MODELS_TO_PRIORITIZE = [
     "BAAI/Aquila2-34B",
     "AI-Sweden-Models/gpt-sw3-40b"
 ]
-
-MODELS_TO_PRIORITIZE = []
 
 
 def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
@@ -286,7 +284,7 @@ def main_loop(
             for i in range(loop_size):
                 request = pending_df.iloc[i]
                 task_queue.put(request)
-                print(f"{request["model_id"]} queued")
+                print(f"{request['model_id']} queued")
                 models_queued.append(request["model_id"])
                 
         for _ in gpu_ids:

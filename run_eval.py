@@ -106,8 +106,8 @@ def run_eval_on_model(
     with open(os.path.join(output_path, f"results_{start_time}.json"), "w", encoding='utf-8') as f:
         json.dump(result_tasks, f, indent=4, ensure_ascii=False)
 
-    gc.collect()
-    torch.cuda.empty_cache()
+    #gc.collect()
+    #torch.cuda.empty_cache()
     
     return result_tasks
 

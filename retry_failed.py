@@ -8,7 +8,11 @@ def retry_failed(error_contains=None):
     failed = []
     download_requests_repo()
     requests_df = get_eval_results_df()
-    pending_df = requests_df[requests_df["status"].isin(["FAILED", "RUNNING"])]
+    status = ["FAILED", "RUNNING"]
+    if error_contains == "RUNNING":
+        status = ["RUNNING"]
+        error_contains = None
+    pending_df = requests_df[requests_df["status"].isin(status)]
     for _, request in pending_df.iterrows():
         with open(request["filepath"], encoding='utf-8') as fp:
             request_dict = json.load(fp)
