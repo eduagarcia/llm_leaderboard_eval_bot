@@ -14,3 +14,5 @@ flash_attn
 git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
 ai2-olmo
 hf_transfer
+mamba-ssm
+causal-conv1d
