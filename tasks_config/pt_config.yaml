@@ -1,9 +1,46 @@
-version: 1.0.0
+version: 1.1.0
 config:
+  REPO_ID: "eduagarcia/open_pt_llm_leaderboard"
   QUEUE_REPO: eduagarcia-temp/llm_pt_leaderboard_requests
   RESULTS_REPO: eduagarcia-temp/llm_pt_leaderboard_results
   RAW_RESULTS_REPO: eduagarcia-temp/llm_pt_leaderboard_raw_results
-  TRUST_REMOTE_CODE: false
+  DYNAMIC_INFO_REPO: "eduagarcia-temp/llm_pt_leaderboard_model_info"
+  PATH_TO_COLLECTION: "eduagarcia/portuguese-llm-leaderboard-best-models-65c152c13ab3c67bc4f203a6"
+  IS_PUBLIC: true
+  LEADERBOARD_NAME: "Open PT-LLM Leaderboard"
+  GET_ORIGINAL_HF_LEADERBOARD_EVAL_RESULTS: true
+  TRUST_REMOTE_CODE: true
+readme:
+  general_description: |
+    📐 The 🚀 Open PT LLM Leaderboard aims to provide a benchmark for the evaluation of 
+    Large Language Models (LLMs) in the Portuguese language across a variety of tasks 
+    and datasets.   
+    The leaderboard is open to submissions of models from the community 
+    and is designed to be a resource for researchers, practitioners, and enthusiasts 
+    interested in the development and evaluation of LLMs for the Portuguese language.  
+    If you have any questions, suggestions, or would like to contribute to the leaderboard,
+    please feel free to reach out at [@eduagarcia](https://linktr.ee/eduagarcia).
+  support_description: |
+    This leaderboard is made possible by the support of the 
+    [Center of Excelence in AI (CEIA)](https://ceia.ufg.br/) at the 
+    [Federal University of Goiás (UFG)](https://international.ufg.br/).
+  about_description: |
+    The 🚀 Open PT-LLM Leaderboard is a benchmark for the evaluation of 
+    Large Language Models (LLMs) in the Portuguese language.  
+    
+    The leaderboard is open to submissions of models from the community and 
+    is designed to be a resource for  researchers, practitioners, and enthusiasts interested 
+    in the development and evaluation of LLMs for the Portuguese language.  
+
+    Supported by the [Center of Excelence in AI (CEIA)](https://ceia.ufg.br/) at the 
+    [Federal University of Goiás (UFG)](https://international.ufg.br/), this leaderboard 
+    operates on a backend of Nvidia A100-80G GPUs. Evaluations are subject to 
+    resource availability, which is not exclusive. Therefore, please be patient if 
+    your model is in the queue. If you'd like to support the leaderboard, feel free to 
+    reach out.
+
+    This is a fork of the <a href="https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard" target="_blank">🤗 Open LLM Leaderboard</a> with 
+    portuguese benchmarks. 
 tasks:
   enem_challenge:
     benchmark: enem_challenge
@@ -123,25 +160,52 @@ tasks:
     entailment task between a question and its possible answers."
     link: https://huggingface.co/datasets/ruanchaves/faquad-nli
     sources: ["https://github.com/liafacom/faquad/"]
-  sparrow_pt:
-    benchmark: sparrow_pt
-    col_name: Sparrow POR
+  hatebr_offensive:
+    benchmark: hatebr_offensive
+    col_name: HateBR Offensive
     task_list:
-    - sparrow_emotion-2021-cortiz-por
-    - sparrow_hate-2019-fortuna-por
-    - sparrow_sentiment-2016-mozetic-por
-    - sparrow_sentiment-2018-brum-por
+    - hatebr_offensive
     metric: f1_macro
     few_shot: 25
-    limit: 500
-    baseline: 29.5 #random baseline [3.3, 48.8, 33.1, 33.0]
+    limit: null
+    baseline: 50.0
     human_baseline: null
     expert_human_baseline: null
-    description: "SPARROW is a multilingual evaluation benchmark for sociopragmatic meaning understanding. 
-    SPARROW comprises 169 datasets encompassing 64 different languages, 
-    this split evaluates only on the validation set of 4 datasets avaliable for the Portuguese language.
-    One on hate speech detection by Fortuna et al. (2019), one on emotion detection by Cortiz et al. (2021) 
-    and two on sentiment analysis by Mozetic et al. (2016) and Brum et al. (2018).
-    All were extracted and manually annotated from Twitter/X."
-    link: https://huggingface.co/datasets/UBC-NLP/sparrow
-    sources: ["https://sparrow.dlnlp.ai/", "https://aclanthology.org/W19-3510/", "https://arxiv.org/abs/2108.07638", "https://aclanthology.org/L18-1658/", "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0155036"]
+    description: "HateBR is the first large-scale expert annotated dataset of Brazilian Instagram comments for abusive language detection 
+    on the web and social media. The HateBR was collected from Brazilian Instagram comments of politicians and manually annotated 
+    by specialists. It is composed of 7,000 documents annotated with a binary classification (offensive 
+    versus non-offensive comments)."
+    link: https://huggingface.co/datasets/ruanchaves/hatebr
+    sources: ["https://github.com/franciellevargas/HateBR", "https://huggingface.co/datasets/eduagarcia/portuguese_benchmark"]
+  portuguese_hate_speech:
+    benchmark: portuguese_hate_speech
+    col_name: PT Hate Speech
+    task_list:
+    - portuguese_hate_speech
+    metric: f1_macro
+    few_shot: 25
+    limit: null
+    baseline: 47.9
+    human_baseline: null
+    expert_human_baseline: null
+    description: "Portuguese dataset for hate speech detection composed of 5,668 tweets with binary annotations (i.e. 'hate' vs. 'no-hate')"
+    link: https://huggingface.co/datasets/eduagarcia/portuguese_benchmark
+    sources: ["https://github.com/paulafortuna/Portuguese-Hate-Speech-Dataset", "https://huggingface.co/datasets/hate_speech_portuguese"]
+  tweetsentbr:
+    benchmark: tweetsentbr
+    col_name: tweetSentBR
+    task_list:
+    - tweetsentbr
+    metric: f1_macro
+    few_shot: 25
+    limit: null
+    baseline: 32.8
+    human_baseline: null
+    expert_human_baseline: null
+    description: "TweetSentBR is a corpus of Tweets in Brazilian Portuguese. 
+    It was labeled by several annotators following steps stablished on the literature for 
+    improving reliability on the task of Sentiment Analysis. Each Tweet was annotated 
+    in one of the three following classes: Positive, Negative, Neutral."
+    link: https://bitbucket.org/HBrum/tweetsentbr
+    sources: ["https://bitbucket.org/HBrum/tweetsentbr", "https://arxiv.org/abs/1712.08917"]
+  

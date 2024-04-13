@@ -13,7 +13,8 @@ def run_eval_on_model(
         model="huggingface",
         model_args="pretrained=EleutherAI/pythia-14m",
         output_path=os.path.join(EVAL_RESULTS_PATH+"_test", "default"),
-        start_time=None
+        start_time=None,
+        batch_size=None
 ):  
     if start_time is None:
         start_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S.%f")
@@ -52,14 +53,18 @@ def run_eval_on_model(
 
     output_raw_path = os.path.join(output_path, f"raw_{start_time}")
 
+    max_batch_size = 64
+    if batch_size is not None:
+        max_batch_size = batch_size
+
     result = evaluate(
         model=model,
-        model_args=model_args + ",starting_max_length=4096",
+        model_args=model_args + ",starting_max_length=2560",
         tasks=",".join(task_list),
         num_fewshot=",".join(few_shot_list),
         limit=",".join(limit_list),
         batch_size='auto',
-        max_batch_size=256,
+        max_batch_size=max_batch_size,
         log_samples=True,
         show_config=True,
         output_path=output_raw_path,

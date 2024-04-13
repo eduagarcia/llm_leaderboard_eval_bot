@@ -11,6 +11,7 @@ COLS = [
     "revision",
     "private",
     "precision",
+    "params",
     "architectures",
     "weight_type",
     "status",
@@ -25,7 +26,10 @@ COLS = [
     "eval_version",
     "result_metrics",
     "result_metrics_average",
-    "source"
+    "source",
+    "hide",
+    "hidden",
+    "main_language"
 ]
 
 def get_eval_results_df():

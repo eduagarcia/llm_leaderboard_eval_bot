@@ -22,7 +22,8 @@ def run_request(
         job_id=None,
         commit_hash=None,
         gpu_id = 0,
-        parallelize = True
+        parallelize = True,
+        batch_size=None
     ):
     start_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S.%f")
     request_data["status"] = "RUNNING"
@@ -65,7 +66,8 @@ def run_request(
         model=lm_eval_model_type,
         model_args=model_args,
         output_path=os.path.join(EVAL_RESULTS_PATH, request_data['model']),
-        start_time=start_time
+        start_time=start_time,
+        batch_size=batch_size
     )
 
     results["config_general"]["model_name"] = request_data["model"]
@@ -110,19 +112,22 @@ def run_request(
     if RAW_RESULTS_REPO is not None:
         upload_raw_results(request_data['model'])
 
-    #delete_model_from_cache(commit_hash)
+    delete_model_from_cache(commit_hash)
 
 lock = RLock()
 MODELS_TO_DOWNLOAD = []
 MODELS_DOWNLOADED = {}
 MODELS_DOWNLOADED_FAILED = {}
+SLEEPING = True
 def download_all_models(pending_df, max_queue_size=5):
-    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED, MODELS_TO_DOWNLOAD
+    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED, MODELS_TO_DOWNLOAD, SLEEPING
     for _, request in pending_df.iterrows():
         MODELS_TO_DOWNLOAD.append(f"{request['model']}_{request['revision']}")
     for _, request in pending_df.iterrows():
         while len(MODELS_DOWNLOADED) >= max_queue_size:
+            SLEEPING = True
             time.sleep(60)
+        SLEEPING = False
         commit_hash = None
         if request["lm_eval_model_type"] == "huggingface":
             logging.info(f"Downloading of {request['model']} [{request['revision']}]...")
@@ -149,46 +154,66 @@ def download_all_models(pending_df, max_queue_size=5):
         logging.info(f"Download of {request['model']} [{request['revision']}] completed.")
 
 MODELS_TO_PRIORITIZE = [
-    "mistralai/Mixtral-8x7B-v0.1",
-    "meta-llama/Llama-2-70b-hf",
-    "huggyllama/llama-65b",
-    "huggyllama/llama-30b",
+    "databricks/dbrx-base",
+    "botbot-ai/Cabra-72b",
+    "WizardLM/WizardLM-70B-V1.0",
+    "allenai/tulu-2-dpo-70b",
+    "CohereForAI/c4ai-command-r-plus",
+    "databricks/dbrx-instruct",
+    "CohereForAI/c4ai-command-r-v01",
+    "ai21labs/Jamba-v0.1",
     "01-ai/Yi-34B",
-    "tiiuae/falcon-40b",
-    "Qwen/Qwen-72B",
-    "facebook/opt-66b",
-    "facebook/opt-30b",
-    "xverse/XVERSE-65B",
-    "xverse/XVERSE-65B-2",
-    "deepseek-ai/deepseek-llm-67b-base",
-    "BAAI/Aquila2-34B",
-    "AI-Sweden-Models/gpt-sw3-40b"
+    "01-ai/Yi-34B-200K",
+     "BAAI/Aquila2-34B",
+    "abacusai/Smaug-34B-v0.1",
+    "deepseek-ai/deepseek-llm-67b-base"
+]
+
+MODELS_TO_PRIORITIZE = [
+    "JJhooww/Mistral-7B-v0.2-Base_ptbr",
+    "stabilityai/stablelm-2-12b-chat",
+    "01-ai/Yi-9B",
+    "Qwen/Qwen1.5-MoE-A2.7B",
+    "Qwen/Qwen1.5-MoE-A2.7B-Chat",
+    "deepseek-ai/deepseek-moe-16b-base",
+    "CohereForAI/c4ai-command-r-v01",
+    "01-ai/Yi-34B",
+    "Qwen/Qwen1.5-32B",
+    "Qwen/Qwen1.5-32B-Chat",
+    "ai21labs/Jamba-v0.1",
+    "CohereForAI/c4ai-command-r-plus-4bit",
+    "mistral-community/Mixtral-8x22B-v0.1-4bit",
+    "01-ai/Yi-9B-200K"
 ]
 
 
-def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
-    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED, MODELS_TO_DOWNLOAD
+def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_size=None):
+    global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED, MODELS_TO_DOWNLOAD, SLEEPING
     with open(request["filepath"], encoding='utf-8') as fp:
         request_dict = json.load(fp)
     logging.info(f"Starting job: {job_id} on model_id: {request['model_id']}")
     try:
         logging.info(f"Waiting download of {request['model']} [{request['revision']}]...")
-        if f"{request['model']}_{request['revision']}" in MODELS_TO_DOWNLOAD:
-            while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED:
+        if f"{request['model']}_{request['revision']}" in MODELS_TO_DOWNLOAD and not SLEEPING:
+            while f"{request['model']}_{request['revision']}" not in MODELS_DOWNLOADED and not SLEEPING:
                 time.sleep(60)
-            with lock:
-                commit_hash = MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
-                del MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
-            if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
-                exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
-                raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}")
+            if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED:
+                with lock:
+                    commit_hash = MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
+                    del MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
+                if f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED_FAILED:
+                    exception_msg = MODELS_DOWNLOADED_FAILED[f"{request['model']}_{request['revision']}"]
+                    raise Exception(f"Failed to download and/or use the AutoModel class, trust_remote_code={TRUST_REMOTE_CODE} - Original Exception: {exception_msg}") 
+        else:
+            commit_hash = None
         run_request(
             request["model_id"],
             request_dict,
             job_id=job_id,
             commit_hash=commit_hash,
             gpu_id=gpu_id,
-            parallelize=parallelize
+            parallelize=parallelize,
+            batch_size=batch_size
         )
     except Exception as e:
         request_dict["status"] = "FAILED"
@@ -205,21 +230,24 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id):
                 torch.cuda.empty_cache()
 
 def get_pending_df():
+    download_requests_repo()
     requests_df = get_eval_results_df()
     pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])].copy()
     
-    pending_df['priority'] = pending_df["model"].apply(lambda x: int(x not in MODELS_TO_PRIORITIZE))
-    pending_df['source_priority'] = pending_df["source"].apply(lambda x: {"leaderboard": 0, "script": 1}.get(x, 2))
+    pending_df['priority'] = pending_df["model"].apply(lambda x: MODELS_TO_PRIORITIZE.index(x) if x in MODELS_TO_PRIORITIZE else len(MODELS_TO_PRIORITIZE)+1)
+    pending_df['source_priority'] = pending_df["source"].apply(lambda x: {"manual": 0, "leaderboard": 1, "script": 2}.get(x, 3))
+    pending_df['status_priority'] = pending_df["status"].apply(lambda x: {"PENDING": 2, "RERUN": 0, "PENDING_NEW_EVAL": 1}.get(x, 3))
     
-    pending_df = pending_df.sort_values(['priority', 'source_priority', 'submitted_time'])
-    pending_df = pending_df.drop(['priority', 'source_priority'], axis=1)
+    pending_df = pending_df.sort_values(['priority', 'source_priority', 'status_priority', 'submitted_time'])
+    pending_df = pending_df.drop(['priority', 'source_priority', 'status_priority'], axis=1)
     
     return pending_df
 
 def main_loop(
         gpu_ids = [0],
         parallelize = False,
-        download_queue_size = 5
+        download_queue_size = 5,
+        process_per_gpu = 1
     ):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     logging.info("Running main loop")
@@ -231,6 +259,7 @@ def main_loop(
     
     pending_df = get_pending_df()
     
+    download_queue_size = max(int(len(gpu_ids) * process_per_gpu) +1, download_queue_size)
     download_thread = Thread(target=download_all_models, args=(pending_df,download_queue_size))
     download_thread.daemon = True
     download_thread.start()
@@ -238,57 +267,57 @@ def main_loop(
     if parallelize:
         gpu_ids = [gpu_ids[0]]
     
-    if len(gpu_ids) == 1:
+    if len(gpu_ids) == 1 and process_per_gpu == 1:
         while len(pending_df) > 0:
             pending_df = get_pending_df()
             request = pending_df.iloc[0]
+            last_job_id += 1
             wait_download_and_run_request(request, gpu_ids[0], parallelize, last_job_id)
     else:
         # spawn threads of wait_download_and_run_request for each gpu
-        max_queue_size = len(gpu_ids) + 1
-        task_queue = Queue(maxsize=max_queue_size)
+        
         job_id_counter = count(start=last_job_id)  # Thread-safe counter for job_id
+        jobs_running = set()
         job_id_lock = Lock()
 
-        def worker(task_queue, job_id_counter, job_id_lock, gpu_id):
+        def worker(pending_df, job_id_counter, job_id_lock, gpu_id, k):
+            i = 0
             while True:
-                task = task_queue.get()
-                if task is None:  # Sentinel value to exit thread
-                    task_queue.task_done()
-                    break
-                request = task
+                with job_id_lock:
+                    if i == 0:
+                        request = pending_df.iloc[k]
+                    else:
+                        pending_df = get_pending_df()
+                        if len(pending_df) == 0:
+                            break
+                        for _, row in pending_df.iterrows():
+                            request = row
+                            if f"{request['model']}_{request['revision']}" not in jobs_running:
+                                break   
+                    model_id = f"{request['model']}_{request['revision']}"
+                    jobs_running.add(model_id)
+                    job_id = next(job_id_counter)
                 try:
-                    with job_id_lock:
-                        job_id = next(job_id_counter)
-                    wait_download_and_run_request(request, gpu_id, False, job_id)
+                    wait_download_and_run_request(request, gpu_id, False, job_id, batch_size=1)
                 except Exception as e:
                     traceback.print_exc()
                     print(f"Error processing task with GPU {gpu_id}: {e}")
                 finally:
-                    task_queue.task_done()
+                    i += 1
+                    with job_id_lock:
+                        jobs_running.remove(model_id)
 
+        time.sleep(5)
         # Start a worker thread for each GPU
         threads = []
-        for gpu_id in gpu_ids:
-            thread = Thread(target=worker, args=(task_queue, job_id_counter, job_id_lock, gpu_id))
-            thread.daemon = True
-            thread.start()
-            threads.append(thread)
-
-        # Enqueue tasks
-        models_queued = []
-        while len(pending_df) > 0:
-            pending_df = get_pending_df()
-            pending_df = pending_df[~(pending_df["model_id"].isin(models_queued))]
-            loop_size = len(gpu_ids) if len(gpu_ids) < len(pending_df) else len(pending_df)
-            for i in range(loop_size):
-                request = pending_df.iloc[i]
-                task_queue.put(request)
-                print(f"{request['model_id']} queued")
-                models_queued.append(request["model_id"])
-                
-        for _ in gpu_ids:
-            task_queue.put(None)  # Sentinel values to stop the worker threads
+        k = 0
+        for i in range(process_per_gpu):
+            for gpu_id in gpu_ids:
+                thread = Thread(target=worker, args=(pending_df, job_id_counter, job_id_lock, gpu_id, k))
+                thread.daemon = True
+                thread.start()
+                threads.append(thread)
+                k += 1
 
         # Wait for all of the tasks to finish
         for thread in threads:
@@ -316,6 +345,12 @@ def parse_eval_args() -> argparse.Namespace:
         default=5,
         help="Max download queue size",
     )
+    parser.add_argument(
+        "--process_per_gpu",
+        type=int,
+        default=1,
+        help="Number process per gpu",
+    )
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -326,7 +361,8 @@ if __name__ == "__main__":
         main_loop(
             gpu_ids=gpu_ids,
             parallelize=args.parallelize,
-            download_queue_size=args.download_queue_size
+            download_queue_size=args.download_queue_size,
+            process_per_gpu=args.process_per_gpu
         )
         print("sleeping")
         time.sleep(60)

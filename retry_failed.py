@@ -8,7 +8,7 @@ def retry_failed(error_contains=None):
     failed = []
     download_requests_repo()
     requests_df = get_eval_results_df()
-    status = ["FAILED", "RUNNING"]
+    status = ["FAILED"]
     if error_contains == "RUNNING":
         status = ["RUNNING"]
         error_contains = None
