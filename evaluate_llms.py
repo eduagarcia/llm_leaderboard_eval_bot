@@ -45,13 +45,12 @@ def run_request(
         extra_args=",dtype=float16"
         if request_data["precision"] == "bfloat16":
             extra_args = ",dtype=bfloat16"
-
-        if request_data["precision"] == "8bit":
-            extra_args += ",load_in_8bit=True"
+        elif request_data["precision"] == "8bit":
+            extra_args = ",load_in_8bit=True"
         elif request_data["precision"] == "4bit":
-            extra_args += ",load_in_4bit=True"
+            extra_args = ",load_in_4bit=True"
         elif request_data["precision"] == "GPTQ":
-            extra_args += ",autogptq=True"
+            extra_args = ",autogptq=True"
         
         model_args += extra_args
 
@@ -170,8 +169,6 @@ MODELS_TO_PRIORITIZE = [
 ]
 
 MODELS_TO_PRIORITIZE = [
-    "JJhooww/Mistral-7B-v0.2-Base_ptbr",
-    "stabilityai/stablelm-2-12b-chat",
     "01-ai/Yi-9B",
     "Qwen/Qwen1.5-MoE-A2.7B",
     "Qwen/Qwen1.5-MoE-A2.7B-Chat",
@@ -232,6 +229,7 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
 def get_pending_df():
     download_requests_repo()
     requests_df = get_eval_results_df()
+    #requests_df = requests_df[requests_df["params"] <= 16]
     pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])].copy()
     
     pending_df['priority'] = pending_df["model"].apply(lambda x: MODELS_TO_PRIORITIZE.index(x) if x in MODELS_TO_PRIORITIZE else len(MODELS_TO_PRIORITIZE)+1)
@@ -259,10 +257,12 @@ def main_loop(
     
     pending_df = get_pending_df()
     
-    download_queue_size = max(int(len(gpu_ids) * process_per_gpu) +1, download_queue_size)
-    download_thread = Thread(target=download_all_models, args=(pending_df,download_queue_size))
-    download_thread.daemon = True
-    download_thread.start()
+    if download_queue_size > 0:
+        if process_per_gpu > 1 or len(gpu_ids) > 1:
+            download_queue_size = max(int(len(gpu_ids) * process_per_gpu) +1, download_queue_size)
+        download_thread = Thread(target=download_all_models, args=(pending_df,download_queue_size))
+        download_thread.daemon = True
+        download_thread.start()
 
     if parallelize:
         gpu_ids = [gpu_ids[0]]
