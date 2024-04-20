@@ -30,6 +30,11 @@ def run_request(
     request_data["job_id"] = job_id
     request_data["job_start_time"] = start_time
 
+    if 'error_msg' in request_data:
+        del request_data['error_msg']
+    if 'traceback' in request_data:
+        del request_data['traceback']
+
     update_status_requests(model_id, request_data)
 
     model_args = request_data['model']
@@ -111,6 +116,8 @@ def run_request(
     if RAW_RESULTS_REPO is not None:
         upload_raw_results(request_data['model'])
 
+    if commit_hash is None:
+        commit_hash = results["config_general"]["model_sha"]
     delete_model_from_cache(commit_hash)
 
 lock = RLock()
@@ -162,25 +169,27 @@ MODELS_TO_PRIORITIZE = [
     "CohereForAI/c4ai-command-r-v01",
     "ai21labs/Jamba-v0.1",
     "01-ai/Yi-34B",
-    "01-ai/Yi-34B-200K",
-     "BAAI/Aquila2-34B",
-    "abacusai/Smaug-34B-v0.1",
-    "deepseek-ai/deepseek-llm-67b-base"
+    "deepseek-ai/deepseek-llm-67b-base",
+]
+
+
+MODELS_TO_PRIORITIZE = [
+    "meta-llama/Meta-Llama-3-8B",
+    "meta-llama/Meta-Llama-3-8B-Instruct",
 ]
 
 MODELS_TO_PRIORITIZE = [
-    "01-ai/Yi-9B",
-    "Qwen/Qwen1.5-MoE-A2.7B",
-    "Qwen/Qwen1.5-MoE-A2.7B-Chat",
-    "deepseek-ai/deepseek-moe-16b-base",
-    "CohereForAI/c4ai-command-r-v01",
-    "01-ai/Yi-34B",
-    "Qwen/Qwen1.5-32B",
-    "Qwen/Qwen1.5-32B-Chat",
-    "ai21labs/Jamba-v0.1",
-    "CohereForAI/c4ai-command-r-plus-4bit",
-    "mistral-community/Mixtral-8x22B-v0.1-4bit",
-    "01-ai/Yi-9B-200K"
+    'Qwen/Qwen-14B',
+    'Qwen/Qwen-1_8B-Chat',
+    'Qwen/Qwen-1_8B',
+    'Qwen/Qwen-7B-Chat',
+    'Qwen/Qwen-7B',
+    'mistral-community/Mixtral-8x22B-Instruct-v0.1-4bit',
+    'SinclairSchneider/zephyr-orpo-141b-A35b-v0.1-bnb-4bit',
+    "databricks/dbrx-base",
+    "databricks/dbrx-instruct",
+    'EleutherAI/pythia-12b-deduped',
+    'EleutherAI/polyglot-ko-12.8b'
 ]
 
 
@@ -218,6 +227,8 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
         request_dict["traceback"] = traceback.format_exc()
         logging.error(request_dict["traceback"])
         update_status_requests(request["model_id"], request_dict)
+        if request_dict["model"] in MODELS_TO_PRIORITIZE:
+            MODELS_TO_PRIORITIZE.remove(request_dict["model"])
     finally:
         gc.collect()
         if parallelize:
@@ -229,15 +240,20 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
 def get_pending_df():
     download_requests_repo()
     requests_df = get_eval_results_df()
-    #requests_df = requests_df[requests_df["params"] <= 16]
-    pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])].copy()
+    requests_df = requests_df[((requests_df["params"] <= 50) | (requests_df["precision"] == '4bit'))]
+    pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL", "FAILED"])].copy()
+    
+    pending_df = pending_df[((pending_df["model"].isin(MODELS_TO_PRIORITIZE)) | (pending_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])))]
     
     pending_df['priority'] = pending_df["model"].apply(lambda x: MODELS_TO_PRIORITIZE.index(x) if x in MODELS_TO_PRIORITIZE else len(MODELS_TO_PRIORITIZE)+1)
     pending_df['source_priority'] = pending_df["source"].apply(lambda x: {"manual": 0, "leaderboard": 1, "script": 2}.get(x, 3))
-    pending_df['status_priority'] = pending_df["status"].apply(lambda x: {"PENDING": 2, "RERUN": 0, "PENDING_NEW_EVAL": 1}.get(x, 3))
+    pending_df['language_priority'] = pending_df["main_language"].apply(lambda x: {"Portuguese": 0}.get(x, 1))
+    pending_df['status_priority'] = pending_df["status"].apply(lambda x: {"PENDING": 0, "RERUN": 1, "PENDING_NEW_EVAL": 2}.get(x, 3))
     
-    pending_df = pending_df.sort_values(['priority', 'source_priority', 'status_priority', 'submitted_time'])
-    pending_df = pending_df.drop(['priority', 'source_priority', 'status_priority'], axis=1)
+    pending_df = pending_df.sort_values(['priority', 'source_priority', 'language_priority', 'status_priority', 'submitted_time'])
+    pending_df = pending_df.drop(['priority', 'source_priority', 'language_priority', 'status_priority'], axis=1)
+
+    print('Model order:', pending_df.head(10)['model'].values)
     
     return pending_df
 

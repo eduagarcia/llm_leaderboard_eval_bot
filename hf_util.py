@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import time
+import requests
 from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
 from huggingface_hub.utils._errors import HfHubHTTPError
 import traceback
@@ -16,7 +17,7 @@ from transformers.models.auto.modeling_auto import (
 
 api = HfApi()
 
-def download_requests_repo():
+def _download_requests_repo():
     """Download the eval requests repo"""
     #delete old folder
     #if os.path.exists(EVAL_REQUESTS_PATH):
@@ -70,16 +71,21 @@ def _upload_raw_results(model_name):
     )
 
 def _try_request_again(func, download_func, *args):
-    for i in range(5):
+    while True:
         try:
             func(*args)
             break
-        except HfHubHTTPError as e:
+        #except (HfHubHTTPError, requests.exceptions.ConnectionError) as e:
+        except Exception as e:
             download_func()
             traceback.print_exc()
+            time.sleep(10)
             pass
         except Exception as e:
             raise e
+
+def download_requests_repo(*args):
+    return _try_request_again(_download_requests_repo, lambda: time.sleep(1), *args)
 
 def update_status_requests(*args):
     return _try_request_again(_update_status_requests, download_requests_repo, *args)
@@ -164,6 +170,6 @@ def download_model(name, revision="main", force=False):
     return commit_hash
 
 if __name__ == "__main__":
-    #download_requests_repo()
-    import sys
-    download_model(sys.argv[-1], "main")
+    download_requests_repo()
+    #import sys
+    #download_model(sys.argv[-1], "main")
