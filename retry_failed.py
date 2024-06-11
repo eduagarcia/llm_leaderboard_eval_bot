@@ -13,6 +13,7 @@ def retry_failed(error_contains=None):
         status = ["RUNNING"]
         error_contains = None
     pending_df = requests_df[requests_df["status"].isin(status)]
+    #requests_df = requests_df[((requests_df["params"] <= 36) | (requests_df["precision"] == '4bit'))]
     for _, request in pending_df.iterrows():
         with open(request["filepath"], encoding='utf-8') as fp:
             request_dict = json.load(fp)

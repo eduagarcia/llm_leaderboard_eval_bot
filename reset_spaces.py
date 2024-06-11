@@ -1,5 +1,10 @@
 #!/root/miniconda3/envs/torch21/bin/python
+import os
+os.environ['HF_HUB_CACHE'] = '/workspace/datasets/hf_cache/'
+os.environ['HF_CACHE'] = '/workspace/datasets/hf_cache/'
+os.environ['HF_HOME'] = '/workspace/datasets/hf_cache/'
 from huggingface_hub import HfApi
+import time
 repo_ids = [
     "eduagarcia/open_pt_llm_leaderboard",
     "datalawyer/legal_pt_llm_leaderboard",

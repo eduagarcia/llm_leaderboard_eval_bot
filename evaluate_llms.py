@@ -8,6 +8,7 @@ from tasks import Tasks
 import traceback
 import json
 import time
+import signal
 import logging
 from threading import Thread, Lock, RLock
 import torch
@@ -15,6 +16,7 @@ import gc
 import argparse
 from queue import Queue
 from itertools import count
+from functools import partial
 
 def run_request(
         model_id,
@@ -160,38 +162,20 @@ def download_all_models(pending_df, max_queue_size=5):
         logging.info(f"Download of {request['model']} [{request['revision']}] completed.")
 
 MODELS_TO_PRIORITIZE = [
-    "databricks/dbrx-base",
-    "botbot-ai/Cabra-72b",
-    "WizardLM/WizardLM-70B-V1.0",
-    "allenai/tulu-2-dpo-70b",
+    "Qwen/Qwen1.5-110B-Chat",
+    "Qwen/Qwen1.5-110B",
+    "alpindale/WizardLM-2-8x22B",
+    #"152334H/miqu-1-70b-sf",
+    #"abacusai/Smaug-Llama-3-70B-Instruct",
+    #"Xwin-LM/Xwin-LM-70B-V0.1",
+    "mistralai/Mixtral-8x22B-Instruct-v0.1",
+    "mistralai/Mixtral-8x22B-v0.1",
     "CohereForAI/c4ai-command-r-plus",
-    "databricks/dbrx-instruct",
-    "CohereForAI/c4ai-command-r-v01",
-    "ai21labs/Jamba-v0.1",
-    "01-ai/Yi-34B",
-    "deepseek-ai/deepseek-llm-67b-base",
-]
-
-
-MODELS_TO_PRIORITIZE = [
-    "meta-llama/Meta-Llama-3-8B",
-    "meta-llama/Meta-Llama-3-8B-Instruct",
-]
-
-MODELS_TO_PRIORITIZE = [
-    'Qwen/Qwen-14B',
-    'Qwen/Qwen-1_8B-Chat',
-    'Qwen/Qwen-1_8B',
-    'Qwen/Qwen-7B-Chat',
-    'Qwen/Qwen-7B',
-    'mistral-community/Mixtral-8x22B-Instruct-v0.1-4bit',
-    'SinclairSchneider/zephyr-orpo-141b-A35b-v0.1-bnb-4bit',
     "databricks/dbrx-base",
-    "databricks/dbrx-instruct",
-    'EleutherAI/pythia-12b-deduped',
-    'EleutherAI/polyglot-ko-12.8b'
+    "databricks/dbrx-instruct"
 ]
 
+MODELS_TO_PRIORITIZE = []
 
 def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_size=None):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED, MODELS_TO_DOWNLOAD, SLEEPING
@@ -237,17 +221,25 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
             with torch.cuda.device(f"cuda:{gpu_id}"):
                 torch.cuda.empty_cache()
 
-def get_pending_df():
+def get_pending_df_cond(max_model_size=None, allow_4bits=True):
     download_requests_repo()
     requests_df = get_eval_results_df()
-    requests_df = requests_df[((requests_df["params"] <= 50) | (requests_df["precision"] == '4bit'))]
+
+    if not allow_4bits:
+        requests_df = requests_df[requests_df["precision"].isin(['float16', 'bfloat16'])]
+    if max_model_size is not None:
+        requests_df = requests_df[((requests_df["params"] <= max_model_size) | (~(requests_df["precision"].isin(['float16', 'bfloat16']))))]
+
     pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL", "FAILED"])].copy()
     
     pending_df = pending_df[((pending_df["model"].isin(MODELS_TO_PRIORITIZE)) | (pending_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL"])))]
+
+    #filter t5 e gpt
+    #pending_df = pending_df[~(pending_df['model'].str.lower().str.contains('t5', regex=False)) & ~(pending_df['model'].str.lower().str.contains('gpt', regex=False))]
     
     pending_df['priority'] = pending_df["model"].apply(lambda x: MODELS_TO_PRIORITIZE.index(x) if x in MODELS_TO_PRIORITIZE else len(MODELS_TO_PRIORITIZE)+1)
     pending_df['source_priority'] = pending_df["source"].apply(lambda x: {"manual": 0, "leaderboard": 1, "script": 2}.get(x, 3))
-    pending_df['language_priority'] = pending_df["main_language"].apply(lambda x: {"Portuguese": 0}.get(x, 1))
+    pending_df['language_priority'] = pending_df["main_language"].apply(lambda x: {"Portuguese": 0, "English": 2}.get(x, 1))
     pending_df['status_priority'] = pending_df["status"].apply(lambda x: {"PENDING": 0, "RERUN": 1, "PENDING_NEW_EVAL": 2}.get(x, 3))
     
     pending_df = pending_df.sort_values(['priority', 'source_priority', 'language_priority', 'status_priority', 'submitted_time'])
@@ -261,7 +253,10 @@ def main_loop(
         gpu_ids = [0],
         parallelize = False,
         download_queue_size = 5,
-        process_per_gpu = 1
+        process_per_gpu = 1,
+        batch_size = None,
+        max_model_size=None,
+        allow_4bits=True
     ):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     logging.info("Running main loop")
@@ -270,6 +265,8 @@ def main_loop(
     update_eval_version(requests_df, EVAL_VERSION)
 
     last_job_id = int(requests_df["job_id"].max())
+
+    get_pending_df = partial(get_pending_df_cond, max_model_size, allow_4bits)
     
     pending_df = get_pending_df()
     
@@ -282,13 +279,16 @@ def main_loop(
 
     if parallelize:
         gpu_ids = [gpu_ids[0]]
+        batch_size = 1
     
     if len(gpu_ids) == 1 and process_per_gpu == 1:
         while len(pending_df) > 0:
             pending_df = get_pending_df()
             request = pending_df.iloc[0]
             last_job_id += 1
-            wait_download_and_run_request(request, gpu_ids[0], parallelize, last_job_id)
+            if 't5' in request['model'].lower() or 'gpt' in request['model'].lower():
+                batch_size = 1024
+            wait_download_and_run_request(request, gpu_ids[0], parallelize, last_job_id, batch_size=batch_size)
     else:
         # spawn threads of wait_download_and_run_request for each gpu
         
@@ -367,18 +367,68 @@ def parse_eval_args() -> argparse.Namespace:
         default=1,
         help="Number process per gpu",
     )
+    parser.add_argument(
+        "--memory_fraction_per_gpu",
+        type=str,
+        default="1",
+        help="GPU % memory to utilize.",
+    )
+    parser.add_argument(
+        "--force_kill_time",
+        type=str,
+        default=None,
+        help="Time to force kill the process (HH:MM).",
+    )
+    parser.add_argument(
+        "--max_model_size",
+        type=int,
+        default=None,
+        help="Max model size to run",
+    )
+    parser.add_argument(
+        "--not_allow_4bits",
+        type=bool,
+        default=False,
+        help="If disallow low bit experiments",
+    )
     return parser.parse_args()
 
-if __name__ == "__main__":
+def force_kill_thread(force_kill_time):
+    kill = False
+    while True:
+        current_time = time.strftime("%H:%M")
+        if current_time == force_kill_time or kill:
+            print(f"Forcing process to kill at {force_kill_time}")
+            os.kill(os.getpid(), signal.SIGKILL)
+            kill = True
+        time.sleep(20)
 
+if __name__ == "__main__":
     args = parse_eval_args()
-    gpu_ids= args.gpu_ids.split(',')
+
+    force_kill_time = args.force_kill_time
+    if force_kill_time is not None:
+        time_monitoring_thread = Thread(target=force_kill_thread, args=(force_kill_time,), daemon=True)
+        time_monitoring_thread.start()
+        
+    gpu_ids = args.gpu_ids.split(',')
+    fractions = [float(i) for i in args.memory_fraction_per_gpu.split(',')]
+    for gpu_id, f in zip(gpu_ids, fractions):
+        if f < 0.99:
+            print(f"Setting device cuda:{gpu_id} to use {f} of total memory")
+            torch.cuda.set_per_process_memory_fraction(f, device=torch.device(f"cuda:{gpu_id}"))
+
+    max_model_size = args.max_model_size
+    allow_4bits = not args.not_allow_4bits
+    
     while True:
         main_loop(
             gpu_ids=gpu_ids,
             parallelize=args.parallelize,
             download_queue_size=args.download_queue_size,
-            process_per_gpu=args.process_per_gpu
+            process_per_gpu=args.process_per_gpu,
+            max_model_size=max_model_size,
+            allow_4bits=allow_4bits
         )
         print("sleeping")
         time.sleep(60)
