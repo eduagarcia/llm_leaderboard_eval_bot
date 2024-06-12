@@ -10,17 +10,20 @@ import sys
 
 def retry_failed(error_contains=None):
     failed = []
-    download_requests_repo()
+    #download_requests_repo()
     requests_df = get_eval_results_df()
     status = ["FAILED"]
+    if "24" in error_contains:
+        requests_df = requests_df[~requests_df.isna()["job_start_time"]]
+        requests_df["job_start_time"] = pd.to_datetime(requests_df['job_start_time'], format="%Y-%m-%dT%H-%M-%S.%f")
+        requests_df = requests_df[requests_df['job_start_time'] <= (dt.datetime.now()-dt.timedelta(hours=23))]
     if "RUNNING" in error_contains:
         status = ["RUNNING"]
         error_contains = None
     pending_df = requests_df[requests_df["status"].isin(status)]
-    if "RUNNING24" == error_contains:
-        pending_df = pending_df[~pending_df.isna()["job_start_time"]]
-        pending_df["job_start_time"] = pd.to_datetime(pending_df['job_start_time'])
-        pending_df = pending_df[pending_df['job_start_time']<=(dt.datetime.now()-dt.timedelta(hours=23))]
+    
+    print(pending_df["model"].values)
+    
     #requests_df = requests_df[((requests_df["params"] <= 36) | (requests_df["precision"] == '4bit'))]
     for _, request in pending_df.iterrows():
         with open(request["filepath"], encoding='utf-8') as fp:
