@@ -175,6 +175,7 @@ MODELS_TO_PRIORITIZE = [
     "databricks/dbrx-instruct"
 ]
 
+DELETE_FAILED = False
 MODELS_TO_PRIORITIZE = []
 
 def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_size=None):
@@ -213,6 +214,9 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
         update_status_requests(request["model_id"], request_dict)
         if request_dict["model"] in MODELS_TO_PRIORITIZE:
             MODELS_TO_PRIORITIZE.remove(request_dict["model"])
+        if DELETE_FAILED and f"{request['model']}_{request['revision']}" in MODELS_DOWNLOADED
+            commit_hash = MODELS_DOWNLOADED[f"{request['model']}_{request['revision']}"]
+            delete_model_from_cache(commit_hash)
     finally:
         gc.collect()
         if parallelize:
