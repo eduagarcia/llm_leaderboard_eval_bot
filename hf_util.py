@@ -7,7 +7,7 @@ import shutil
 import time
 import requests
 from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
-from huggingface_hub.utils._errors import HfHubHTTPError
+from huggingface_hub.utils import HfHubHTTPError
 import traceback
 
 from transformers.models.auto.modeling_auto import (
@@ -103,6 +103,7 @@ def commit_requests_folder(commit_message):
         path_in_repo="./",
         allow_patterns="*.json",
         ignore_patterns=["*/.ipynb_checkpoints/*", ".ipynb_checkpoints"],
+        delete_patterns="*.json",
         repo_type="dataset",
         commit_message=commit_message,
     )

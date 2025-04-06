@@ -57,9 +57,12 @@ def run_eval_on_model(
     if batch_size is not None:
         max_batch_size = batch_size
 
+    if ",max_length=" not in model_args:
+        model_args = model_args + ",starting_max_length=2560"
+
     result = evaluate(
         model=model,
-        model_args=model_args + ",starting_max_length=2560",
+        model_args=model_args,
         tasks=",".join(task_list),
         num_fewshot=",".join(few_shot_list),
         limit=",".join(limit_list),
@@ -117,9 +120,10 @@ def run_eval_on_model(
     return result_tasks
 
 if __name__ == "__main__":
-    #print(run_eval_on_model(
-    #    model_args="pretrained=meta-llama/Llama-2-7b-hf,revision=main,dtype=float16"
-    #))
     print(run_eval_on_model(
-        model_args="pretrained=gpt2,revision=main,dtype=float16,trust_remote_code=True"
+        model_args="pretrained=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B,max_length=4098,enforce_eager=True",
+        model="vllm"
     ))
+    #print(run_eval_on_model(
+    #    model_args="pretrained=gpt2,revision=main,dtype=float16,trust_remote_code=True"
+    #))

@@ -41,6 +41,10 @@ def run_request(
 
     model_args = request_data['model']
     lm_eval_model_type = "huggingface" if "lm_eval_model_type" not in request_data else request_data["lm_eval_model_type"]
+    if lm_eval_model_type is None:
+        lm_eval_model_type = "huggingface"
+    if 'deepseek' in request_data['model'].lower() and ('r1' in request_data['model'].lower() or 'qwen' in request_data['model'].lower()):
+        lm_eval_model_type = "vllm"
     
     if lm_eval_model_type == "huggingface":
         model_args = f"pretrained={request_data['model']}"
@@ -68,6 +72,37 @@ def run_request(
 
         model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)}"
 
+        if 'deepseek' in request_data['model'].lower() and 'r1' in request_data['model'].lower():
+            model_args += ',max_gen_toks=1536'
+    elif lm_eval_model_type == "vllm":
+        model_args = f"pretrained={request_data['model']}"
+        if request_data["weight_type"] == "Adapter":
+            raise Exception("Adapter weights are not supported yet for vllm")
+        elif request_data["weight_type"] == "Delta":
+            raise Exception("Delta weights are not supported yet for vllm")
+            
+        extra_args=",dtype=auto"
+        if request_data["precision"] == "bfloat16":
+            extra_args = ",dtype=bfloat16"
+        elif request_data["precision"] == "8bit":
+            extra_args = ",quantization=fp8"
+        elif request_data["precision"] == "4bit":
+            extra_args = ",quantization=bitsandbytes,load_format=bitsandbytes"
+        elif request_data["precision"] == "GPTQ":
+            raise Exception("GPTQ not supported for vllm")
+
+        model_args += extra_args
+
+        if parallelize:
+            raise Exception("Lacks parallizations testes for vllm and change to not use ray")
+
+        model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)}"
+
+        if 'deepseek' in request_data['model'].lower() and 'r1' in request_data['model'].lower():
+            model_args += ',max_length=4098,enforce_eager=True'
+        else:
+            model_args += ',max_length=2560'
+    
     results = run_eval_on_model(
         model=lm_eval_model_type,
         model_args=model_args,
@@ -94,6 +129,8 @@ def run_request(
 
     request_data["status"] = "FINISHED"
     request_data["eval_version"] = EVAL_VERSION
+    if lm_eval_model_type != "huggingface":
+        request_data["lm_eval_model_type"] = lm_eval_model_type
 
     #update new results
     if "result_metrics" not in request_data:
@@ -119,8 +156,9 @@ def run_request(
         upload_raw_results(request_data['model'])
 
     if commit_hash is None:
-        commit_hash = results["config_general"]["model_sha"]
-    delete_model_from_cache(commit_hash)
+        commit_hash = results["config_general"].get("model_sha", None)
+    if commit_hash is not None:
+        delete_model_from_cache(commit_hash)
 
 lock = RLock()
 MODELS_TO_DOWNLOAD = []
@@ -162,20 +200,20 @@ def download_all_models(pending_df, max_queue_size=5):
         logging.info(f"Download of {request['model']} [{request['revision']}] completed.")
 
 MODELS_TO_PRIORITIZE = [
+    "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    "meta-llama/Meta-Llama-3.1-70B",
+    "Qwen/Qwen2-72B",
+    "botbot-ai/CabraLlama3-70b",
+    "cognitivecomputations/dolphin-2.9.1-llama-3-70b",
+    "CohereForAI/c4ai-command-r-plus",
+    #"mistralai/Mixtral-8x22B-v0.1",
     "Qwen/Qwen1.5-110B-Chat",
     "Qwen/Qwen1.5-110B",
-    "alpindale/WizardLM-2-8x22B",
-    #"152334H/miqu-1-70b-sf",
-    #"abacusai/Smaug-Llama-3-70B-Instruct",
-    #"Xwin-LM/Xwin-LM-70B-V0.1",
-    "mistralai/Mixtral-8x22B-Instruct-v0.1",
-    "mistralai/Mixtral-8x22B-v0.1",
-    "CohereForAI/c4ai-command-r-plus",
     "databricks/dbrx-base",
     "databricks/dbrx-instruct"
 ]
 
-DELETE_FAILED = False
+DELETE_FAILED = True
 MODELS_TO_PRIORITIZE = []
 
 def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_size=None):
@@ -225,9 +263,12 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
             with torch.cuda.device(f"cuda:{gpu_id}"):
                 torch.cuda.empty_cache()
 
-def get_pending_df_cond(max_model_size=None, allow_4bits=True):
+def get_pending_df_cond(max_model_size=None, allow_4bits=True, eval_engine=None):
+    HF_HUB_ENABLE_HF_TRANSFER = os.getenv('HF_HUB_ENABLE_HF_TRANSFER', "0")
+    os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = "0"
     download_requests_repo()
     requests_df = get_eval_results_df()
+    os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = HF_HUB_ENABLE_HF_TRANSFER
 
     if not allow_4bits:
         requests_df = requests_df[requests_df["precision"].isin(['float16', 'bfloat16'])]
@@ -244,10 +285,18 @@ def get_pending_df_cond(max_model_size=None, allow_4bits=True):
     pending_df['priority'] = pending_df["model"].apply(lambda x: MODELS_TO_PRIORITIZE.index(x) if x in MODELS_TO_PRIORITIZE else len(MODELS_TO_PRIORITIZE)+1)
     pending_df['source_priority'] = pending_df["source"].apply(lambda x: {"manual": 0, "leaderboard": 1, "script": 2}.get(x, 3))
     pending_df['language_priority'] = pending_df["main_language"].apply(lambda x: {"Portuguese": 0, "English": 2}.get(x, 1))
-    pending_df['status_priority'] = pending_df["status"].apply(lambda x: {"PENDING": 0, "RERUN": 1, "PENDING_NEW_EVAL": 2}.get(x, 3))
+    pending_df['status_priority'] = pending_df["status"].apply(lambda x: {"PENDING": 2, "RERUN": 1, "PENDING_NEW_EVAL": 0}.get(x, 3))
+    pending_df['engine_priority'] = pending_df["lm_eval_model_type"].apply(lambda x: {"vllm": 0, "huggingface": 1}.get(x, 2))
     
-    pending_df = pending_df.sort_values(['priority', 'source_priority', 'language_priority', 'status_priority', 'submitted_time'])
-    pending_df = pending_df.drop(['priority', 'source_priority', 'language_priority', 'status_priority'], axis=1)
+    pending_df = pending_df.sort_values(['priority', 'source_priority', 'language_priority', 'params', 'status_priority', 'engine_priority', 'submitted_time'])
+    pending_df = pending_df.drop(['priority', 'source_priority', 'language_priority', 'status_priority', 'engine_priority'], axis=1)
+
+    #if eval_engine != "vllm":
+    #    pending_df = pending_df[pending_df['lm_eval_model_type'] != 'vllm']
+    #else:
+    #    pending_df = pending_df[pending_df['lm_eval_model_type'] == 'vllm']
+    if eval_engine is not None:
+        pending_df['lm_eval_model_type'] = eval_engine
 
     print('Model order:', pending_df.head(10)['model'].values)
     
@@ -260,19 +309,24 @@ def main_loop(
         process_per_gpu = 1,
         batch_size = None,
         max_model_size=None,
-        allow_4bits=True
+        allow_4bits=True,
+        eval_engine="huggingface"
     ):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     logging.info("Running main loop")
+    HF_HUB_ENABLE_HF_TRANSFER = os.getenv('HF_HUB_ENABLE_HF_TRANSFER', "0")
+    os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = "0"
     download_requests_repo()
     requests_df = get_eval_results_df()
     update_eval_version(requests_df, EVAL_VERSION)
 
     last_job_id = int(requests_df["job_id"].max())
 
-    get_pending_df = partial(get_pending_df_cond, max_model_size, allow_4bits)
+    get_pending_df = partial(get_pending_df_cond, max_model_size, allow_4bits, eval_engine)
     
     pending_df = get_pending_df()
+
+    os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = HF_HUB_ENABLE_HF_TRANSFER
     
     if download_queue_size > 0:
         if process_per_gpu > 1 or len(gpu_ids) > 1:
@@ -283,7 +337,7 @@ def main_loop(
 
     if parallelize:
         gpu_ids = [gpu_ids[0]]
-        batch_size = 1
+        qbatch_size = 1
     
     if len(gpu_ids) == 1 and process_per_gpu == 1:
         while len(pending_df) > 0:
@@ -395,6 +449,12 @@ def parse_eval_args() -> argparse.Namespace:
         default=False,
         help="If disallow low bit experiments",
     )
+    parser.add_argument(
+        "--eval_engine",
+        type=str,
+        default=None,
+        help="GPU ids to utilize.",
+    )
     return parser.parse_args()
 
 def force_kill_thread(force_kill_time):
@@ -432,7 +492,8 @@ if __name__ == "__main__":
             download_queue_size=args.download_queue_size,
             process_per_gpu=args.process_per_gpu,
             max_model_size=max_model_size,
-            allow_4bits=allow_4bits
+            allow_4bits=allow_4bits,
+            eval_engine=args.eval_engine
         )
         print("sleeping")
         time.sleep(60)

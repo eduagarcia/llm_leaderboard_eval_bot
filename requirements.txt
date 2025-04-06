@@ -1,17 +1,17 @@
-transformers>=4.30.0
+git+https://github.com/huggingface/transformers@main
 bitsandbytes
 pandas
-huggingface_hub==0.20.3
+huggingface_hub
 numpy
 accelerate
-auto-gptq
+#auto-gptq
 optimum
 peft
 tiktoken>=0.6.0 #qwenn stability
 einops #internlm
 transformers_stream_generator #qwenn
 flash_attn
-git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
+git+https://github.com/facebookresearch/xformers.git@v0.0.29.post2#egg=xformers
 ai2-olmo
 hf_transfer
 mamba-ssm
