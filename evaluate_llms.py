@@ -14,6 +14,7 @@ from threading import Thread, Lock, RLock
 import torch
 import gc
 import argparse
+import pandas as pd
 from queue import Queue
 from itertools import count
 from functools import partial
@@ -43,10 +44,11 @@ def run_request(
     lm_eval_model_type = "huggingface" if "lm_eval_model_type" not in request_data else request_data["lm_eval_model_type"]
     if lm_eval_model_type is None:
         lm_eval_model_type = "huggingface"
-    if 'deepseek' in request_data['model'].lower() and ('r1' in request_data['model'].lower() or 'qwen' in request_data['model'].lower()):
-        lm_eval_model_type = "vllm"
+    #if 'deepseek' in request_data['model'].lower() and ('r1' in request_data['model'].lower() or 'qwen' in request_data['model'].lower()):
+    #    lm_eval_model_type = "vllm"
     
     if lm_eval_model_type == "huggingface":
+        print("Running huggingface engine")
         model_args = f"pretrained={request_data['model']}"
         if request_data["weight_type"] == "Adapter":
             model_args = f"pretrained={request_data['base_model']},peft={request_data['model']}"
@@ -72,9 +74,10 @@ def run_request(
 
         model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)}"
 
-        if 'deepseek' in request_data['model'].lower() and 'r1' in request_data['model'].lower():
-            model_args += ',max_gen_toks=1536'
+        #if 'deepseek' in request_data['model'].lower() and 'r1' in request_data['model'].lower():
+        model_args += ',max_gen_toks=1536'
     elif lm_eval_model_type == "vllm":
+        print("Running vllm engine")
         model_args = f"pretrained={request_data['model']}"
         if request_data["weight_type"] == "Adapter":
             raise Exception("Adapter weights are not supported yet for vllm")
@@ -98,10 +101,10 @@ def run_request(
 
         model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)}"
 
-        if 'deepseek' in request_data['model'].lower() and 'r1' in request_data['model'].lower():
-            model_args += ',max_length=4098,enforce_eager=True'
-        else:
-            model_args += ',max_length=2560'
+        #if 'deepseek' in request_data['model'].lower() and 'r1' in request_data['model'].lower():
+        model_args += ',max_length=4098'#,enforce_eager=True'
+        #else:
+        #    model_args += ',max_length=2560'
     
     results = run_eval_on_model(
         model=lm_eval_model_type,
@@ -220,6 +223,8 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED, MODELS_TO_DOWNLOAD, SLEEPING
     with open(request["filepath"], encoding='utf-8') as fp:
         request_dict = json.load(fp)
+    if 'lm_eval_model_type' in request and not pd.isna(request['lm_eval_model_type']):
+        request_dict['lm_eval_model_type'] = request['lm_eval_model_type']
     logging.info(f"Starting job: {job_id} on model_id: {request['model_id']}")
     try:
         logging.info(f"Waiting download of {request['model']} [{request['revision']}]...")
@@ -296,6 +301,7 @@ def get_pending_df_cond(max_model_size=None, allow_4bits=True, eval_engine=None)
     #else:
     #    pending_df = pending_df[pending_df['lm_eval_model_type'] == 'vllm']
     if eval_engine is not None:
+        print('selecting eval engine')
         pending_df['lm_eval_model_type'] = eval_engine
 
     print('Model order:', pending_df.head(10)['model'].values)
@@ -314,8 +320,8 @@ def main_loop(
     ):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     logging.info("Running main loop")
-    HF_HUB_ENABLE_HF_TRANSFER = os.getenv('HF_HUB_ENABLE_HF_TRANSFER', "0")
-    os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = "0"
+    #HF_HUB_ENABLE_HF_TRANSFER = os.getenv('HF_HUB_ENABLE_HF_TRANSFER', "0")
+    #os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = "0"
     download_requests_repo()
     requests_df = get_eval_results_df()
     update_eval_version(requests_df, EVAL_VERSION)
@@ -326,7 +332,7 @@ def main_loop(
     
     pending_df = get_pending_df()
 
-    os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = HF_HUB_ENABLE_HF_TRANSFER
+    #os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = HF_HUB_ENABLE_HF_TRANSFER
     
     if download_queue_size > 0:
         if process_per_gpu > 1 or len(gpu_ids) > 1:

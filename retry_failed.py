@@ -30,10 +30,10 @@ def retry_failed(error_contains=None):
         requests_df = requests_df[requests_df["error_msg"].str.contains(error_contains)]
     pending_df = requests_df[requests_df["status"].isin(status)]
 
-    pending_df = pending_df[pending_df["params"] < 33]
+    #pending_df = pending_df[pending_df["params"] < 33]
     print(pending_df["model"].values)
-
     #requests_df = requests_df[((requests_df["params"] <= 36) | (requests_df["precision"] == '4bit'))]
+    
     for _, request in pending_df.iterrows():
         with open(request["filepath"], encoding='utf-8') as fp:
             request_dict = json.load(fp)
