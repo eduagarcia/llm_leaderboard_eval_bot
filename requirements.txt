@@ -1,4 +1,4 @@
-git+https://github.com/huggingface/transformers@main
+#git+https://github.com/huggingface/transformers@main
 #bitsandbytes
 pandas
 huggingface_hub

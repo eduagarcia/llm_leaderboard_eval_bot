@@ -68,7 +68,7 @@ def run_request(
         model_args += extra_args
 
         if parallelize:
-            model_args += f",parallelize=True"
+            model_args += ",parallelize=True"
         else:
             model_args += f",device=cuda:{gpu_id}"
 
@@ -268,7 +268,7 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
             with torch.cuda.device(f"cuda:{gpu_id}"):
                 torch.cuda.empty_cache()
 
-def get_pending_df_cond(max_model_size=None, allow_4bits=True, eval_engine=None):
+def get_pending_df_cond(max_model_size=None, min_model_size=None, allow_4bits=True, eval_engine=None):
     HF_HUB_ENABLE_HF_TRANSFER = os.getenv('HF_HUB_ENABLE_HF_TRANSFER', "0")
     os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = "0"
     download_requests_repo()
@@ -279,6 +279,8 @@ def get_pending_df_cond(max_model_size=None, allow_4bits=True, eval_engine=None)
         requests_df = requests_df[requests_df["precision"].isin(['float16', 'bfloat16'])]
     if max_model_size is not None:
         requests_df = requests_df[((requests_df["params"] <= max_model_size) | (~(requests_df["precision"].isin(['float16', 'bfloat16']))))]
+    if min_model_size is not None:
+        requests_df = requests_df[((requests_df["params"] >= min_model_size) | (~(requests_df["precision"].isin(['float16', 'bfloat16']))))]
 
     pending_df = requests_df[requests_df["status"].isin(["PENDING", "RERUN", "PENDING_NEW_EVAL", "FAILED"])].copy()
     
@@ -315,8 +317,10 @@ def main_loop(
         process_per_gpu = 1,
         batch_size = None,
         max_model_size=None,
+        min_model_size=None,
         allow_4bits=True,
-        eval_engine="huggingface"
+        eval_engine="huggingface",
+        run_once=False
     ):
     global MODELS_DOWNLOADED, MODELS_DOWNLOADED_FAILED
     logging.info("Running main loop")
@@ -328,7 +332,7 @@ def main_loop(
 
     last_job_id = int(requests_df["job_id"].max())
 
-    get_pending_df = partial(get_pending_df_cond, max_model_size, allow_4bits, eval_engine)
+    get_pending_df = partial(get_pending_df_cond, max_model_size, min_model_size, allow_4bits, eval_engine)
     
     pending_df = get_pending_df()
 
@@ -343,7 +347,7 @@ def main_loop(
 
     if parallelize:
         gpu_ids = [gpu_ids[0]]
-        qbatch_size = 1
+        batch_size = 1
     
     if len(gpu_ids) == 1 and process_per_gpu == 1:
         while len(pending_df) > 0:
@@ -353,6 +357,11 @@ def main_loop(
             if 't5' in request['model'].lower() or 'gpt' in request['model'].lower():
                 batch_size = 1024
             wait_download_and_run_request(request, gpu_ids[0], parallelize, last_job_id, batch_size=batch_size)
+            
+            # If run_once is True, exit after processing the first model
+            if run_once:
+                logging.info("Run-once mode: Processed first model, exiting main loop")
+                break
     else:
         # spawn threads of wait_download_and_run_request for each gpu
         
@@ -386,6 +395,11 @@ def main_loop(
                     i += 1
                     with job_id_lock:
                         jobs_running.remove(model_id)
+                    
+                    # If run_once is True, exit after processing the first model
+                    if run_once:
+                        logging.info(f"Run-once mode: Worker on GPU {gpu_id} processed first model, exiting")
+                        break
 
         time.sleep(5)
         # Start a worker thread for each GPU
@@ -403,7 +417,8 @@ def main_loop(
         for thread in threads:
             thread.join()
 
-    download_thread.join()
+    if download_queue_size > 0:
+        download_thread.join()
 
 def parse_eval_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -449,6 +464,14 @@ def parse_eval_args() -> argparse.Namespace:
         default=None,
         help="Max model size to run",
     )
+
+    parser.add_argument(
+        "--min_model_size",
+        type=int,
+        default=None,
+        help="Min model size to run",
+    )
+
     parser.add_argument(
         "--not_allow_4bits",
         type=bool,
@@ -460,6 +483,12 @@ def parse_eval_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="GPU ids to utilize.",
+    )
+    parser.add_argument(
+        "--run_once",
+        action="store_true",
+        default=False,
+        help="Run only the first model in the queue and then exit (no continuous loop).",
     )
     return parser.parse_args()
 
@@ -489,17 +518,37 @@ if __name__ == "__main__":
             torch.cuda.set_per_process_memory_fraction(f, device=torch.device(f"cuda:{gpu_id}"))
 
     max_model_size = args.max_model_size
+    min_model_size = args.min_model_size
     allow_4bits = not args.not_allow_4bits
     
-    while True:
+    if args.run_once:
+        # Run only once and exit
+        logging.info("Run-once mode enabled: Processing first model and exiting")
         main_loop(
             gpu_ids=gpu_ids,
             parallelize=args.parallelize,
-            download_queue_size=args.download_queue_size,
+            download_queue_size=0,
             process_per_gpu=args.process_per_gpu,
             max_model_size=max_model_size,
+            min_model_size=min_model_size,
             allow_4bits=allow_4bits,
-            eval_engine=args.eval_engine
+            eval_engine=args.eval_engine,
+            run_once=True
         )
-        print("sleeping")
-        time.sleep(60)
+        logging.info("Run-once mode: Evaluation completed, exiting")
+    else:
+        # Original continuous loop behavior
+        while True:
+            main_loop(
+                gpu_ids=gpu_ids,
+                parallelize=args.parallelize,
+                download_queue_size=args.download_queue_size,
+                process_per_gpu=args.process_per_gpu,
+                max_model_size=max_model_size,
+                min_model_size=min_model_size,
+                allow_4bits=allow_4bits,
+                eval_engine=args.eval_engine,
+                run_once=False
+            )
+            print("sleeping")
+            time.sleep(60)

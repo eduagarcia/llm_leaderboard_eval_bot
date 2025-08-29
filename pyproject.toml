@@ -1,0 +1,35 @@
+[project]
+name = "llm_leaderboard_eval_bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas",
+    "requests",
+    "transformers",
+    "torch",
+    "huggingface-hub>=0.34.4",
+    "accelerate>=1.10.1",
+    "tiktoken>=0.6.0",
+    "einops>=0.8.1",
+    "transformers-stream-generator>=0.0.5",
+    "hf-transfer>=0.1.9",
+    "bitsandbytes>=0.47.0",
+    "packaging>=24.1",
+    "wheel>=0.45.1",
+    "lm-eval",
+    "datasets<4.0.0",
+    "flash-attn>=2.8.3",
+    "mamba-ssm[causal-conv1d]>=2.2.5",
+    "protobuf>=6.32.0",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+lm-eval = { path = "../lm-evaluation-harness-pt", editable = true }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu129"
+priority = "supplemental"

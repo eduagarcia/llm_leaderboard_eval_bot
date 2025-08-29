@@ -53,7 +53,7 @@ def run_eval_on_model(
 
     output_raw_path = os.path.join(output_path, f"raw_{start_time}")
 
-    max_batch_size = 64
+    max_batch_size = 256
     if batch_size is not None:
         max_batch_size = batch_size
 
@@ -120,9 +120,12 @@ def run_eval_on_model(
     return result_tasks
 
 if __name__ == "__main__":
+    # print(run_eval_on_model(
+    #     model_args="pretrained=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B,max_length=4098,enforce_eager=True",
+    #     model="vllm"
+    # ))
     print(run_eval_on_model(
-        model_args="pretrained=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B,max_length=4098,enforce_eager=True",
-        model="vllm"
+        model_args="pretrained=CEIA-UFG/Gemma-3-Gaia-PT-BR-4b-it,revision=main,dtype=bfloat16,trust_remote_code=True,max_gen_toks=1536"
     ))
     #print(run_eval_on_model(
     #    model_args="pretrained=gpt2,revision=main,dtype=float16,trust_remote_code=True"
