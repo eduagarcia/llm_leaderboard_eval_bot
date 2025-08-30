@@ -57,7 +57,7 @@ def run_eval_on_model(
     if batch_size is not None:
         max_batch_size = batch_size
 
-    if ",max_length=" not in model_args:
+    if ",max_length=" not in model_args and "starting_max_length=" not in model_args:
         model_args = model_args + ",starting_max_length=2560"
 
     result = evaluate(

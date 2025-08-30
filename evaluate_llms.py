@@ -75,7 +75,12 @@ def run_request(
         model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)}"
 
         #if 'deepseek' in request_data['model'].lower() and 'r1' in request_data['model'].lower():
-        model_args += ',max_gen_toks=1536'
+        # Triton illegal memory access when Falcon/mamba length is arround 4098
+        # https://github.com/state-spaces/mamba/issues/503
+        if 'Falcon' in request_data['model']:
+            model_args += ',max_gen_toks=256,starting_max_length=2048'
+        else:
+            model_args += ',max_gen_toks=4096'
     elif lm_eval_model_type == "vllm":
         print("Running vllm engine")
         model_args = f"pretrained={request_data['model']}"
@@ -106,6 +111,7 @@ def run_request(
         #else:
         #    model_args += ',max_length=2560'
     
+    print(f"Running eval on model model_type: {lm_eval_model_type} model_args: {model_args}")
     results = run_eval_on_model(
         model=lm_eval_model_type,
         model_args=model_args,
@@ -265,6 +271,7 @@ def wait_download_and_run_request(request, gpu_id, parallelize, job_id, batch_si
         if parallelize:
             torch.cuda.empty_cache()
         else:
+            print(f"Emptying cuda cache for gpu cuda:{gpu_id}")
             with torch.cuda.device(f"cuda:{gpu_id}"):
                 torch.cuda.empty_cache()
 

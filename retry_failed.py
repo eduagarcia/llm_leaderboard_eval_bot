@@ -32,8 +32,11 @@ def retry_failed(error_contains=None):
 
     #pending_df = pending_df[pending_df["params"] < 33]
     print(pending_df["model"].values)
-    #requests_df = requests_df[((requests_df["params"] <= 36) | (requests_df["precision"] == '4bit'))]
-    
+
+    #pending_df = pending_df[((pending_df["params"] <= 36) | (pending_df["precision"] == '4bit'))]
+    #pending_df = pending_df[~pending_df["model_id"].str.contains("Falcon")]
+    #exit()
+
     for _, request in pending_df.iterrows():
         with open(request["filepath"], encoding='utf-8') as fp:
             request_dict = json.load(fp)
