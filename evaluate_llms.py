@@ -75,10 +75,11 @@ def run_request(
         model_args += f",revision={request_data['revision']},trust_remote_code={str(TRUST_REMOTE_CODE)}"
 
         #if 'deepseek' in request_data['model'].lower() and 'r1' in request_data['model'].lower():
-        # Triton illegal memory access when Falcon/mamba length is arround 4098
+        # Triton illegal memory access when Falcon/mamba length is above 2048
         # https://github.com/state-spaces/mamba/issues/503
         if 'Falcon' in request_data['model']:
-            model_args += ',max_gen_toks=256,starting_max_length=2048'
+            model_args += ',max_gen_toks=64,starting_max_length=1984'
+            batch_size = 32
         else:
             model_args += ',max_gen_toks=4096'
     elif lm_eval_model_type == "vllm":
