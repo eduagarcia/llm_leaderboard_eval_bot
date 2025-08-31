@@ -81,7 +81,7 @@ def run_request(
             model_args += ',max_gen_toks=64,starting_max_length=1984'
             batch_size = 32
         else:
-            model_args += ',max_gen_toks=4096'
+            model_args += ',max_gen_toks=1536'
     elif lm_eval_model_type == "vllm":
         print("Running vllm engine")
         model_args = f"pretrained={request_data['model']}"
