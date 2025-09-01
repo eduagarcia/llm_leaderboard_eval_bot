@@ -28,6 +28,7 @@ dependencies = [
     "qwen-vl-utils>=0.0.11",
     "keye-vl-utils>=1.5.2",
     "blobfile>=3.0.0",
+    "sentencepiece>=0.2.1",
 ]
 
 [tool.uv.sources]
